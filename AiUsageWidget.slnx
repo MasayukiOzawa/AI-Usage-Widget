@@ -1,0 +1,1 @@
+<Solution><Project Path="src/AiUsageWidget.Core/AiUsageWidget.Core.csproj" /><Project Path="src/AiUsageWidget.App/AiUsageWidget.App.csproj" /><Project Path="src/AiUsageWidget.ClaudeBridge/AiUsageWidget.ClaudeBridge.csproj" /><Project Path="tests/AiUsageWidget.Tests/AiUsageWidget.Tests.csproj" /></Solution>

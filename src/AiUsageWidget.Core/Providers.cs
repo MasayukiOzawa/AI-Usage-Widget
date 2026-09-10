@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -116,6 +117,7 @@ public sealed class CopilotProvider(Func<string?> path) : IUsageProvider
 }
 public sealed class ClaudeProvider : IUsageProvider
 {
+    private static readonly TimeSpan RefreshLeadTime = TimeSpan.FromMinutes(15);
     private readonly ModelCatalog catalog = new();
     private readonly CapabilityCatalog capabilityCatalog = new();
     private readonly HttpClient http;
@@ -135,42 +137,75 @@ public sealed class ClaudeProvider : IUsageProvider
     public async Task<UsageSnapshot> GetSnapshotAsync(CancellationToken ct)
     {
         var oauth = await ReadAuthenticationAsync(ct);
-        var token = oauth.Text("accessToken")!;
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.anthropic.com/api/oauth/usage");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        request.Headers.TryAddWithoutValidation("anthropic-beta", "oauth-2025-04-20");
-        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-            throw new UnauthorizedAccessException($"Claude Code auth/plan unavailable (HTTP {(int)response.StatusCode}).");
-        if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"Claude Code usage HTTP {(int)response.StatusCode}.", null, response.StatusCode);
-        await using var stream = await response.Content.ReadAsStreamAsync(ct);
-        using var usage = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-        var windows = ProviderParsers.ClaudeUsage(usage.RootElement);
-        var now = DateTimeOffset.UtcNow;
-        var plan = oauth.Text("subscriptionType");
-        var accountKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token)));
-        var models = await catalog.ReadAsync(accountKey, ModelCatalog.ClaudeAsync, ct);
-        var capabilities = await capabilityCatalog.ReadAsync(accountKey, CapabilityCatalog.ClaudeAsync, ct);
-        return windows.Count == 0
-            ? new("claude", "default", now, "Claude Code Usage", UsageStatus.AuthenticationRequired, []) { Plan = plan, Capabilities = capabilities }
-            : new("claude", "default", now, "Claude Code Usage", UsageStatus.Ready, windows) { Plan = plan, Models = models, ModelsMessage = catalog.Message, Capabilities = capabilities };
+        JsonDocument usage;
+        try { usage = await ReadUsageAsync(oauth.Text("accessToken")!, ct); }
+        catch (HttpRequestException e) when (e.StatusCode == HttpStatusCode.Unauthorized && !ct.IsCancellationRequested)
+        {
+            oauth = await RefreshAndReadAsync(oauth, ct);
+            usage = await ReadUsageAsync(oauth.Text("accessToken")!, ct);
+        }
+        using (usage)
+        {
+            var windows = ProviderParsers.ClaudeUsage(usage.RootElement);
+            var now = DateTimeOffset.UtcNow;
+            var plan = oauth.Text("subscriptionType");
+            var accountKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(oauth.Text("accessToken")!)));
+            var models = await catalog.ReadAsync(accountKey, ModelCatalog.ClaudeAsync, ct);
+            var capabilities = await capabilityCatalog.ReadAsync(accountKey, CapabilityCatalog.ClaudeAsync, ct);
+            return windows.Count == 0
+                ? new("claude", "default", now, "Claude Code Usage", UsageStatus.AuthenticationRequired, []) { Plan = plan, Capabilities = capabilities }
+                : new("claude", "default", now, "Claude Code Usage", UsageStatus.Ready, windows) { Plan = plan, Models = models, ModelsMessage = catalog.Message, Capabilities = capabilities };
+        }
     }
     public ValueTask DisposeAsync() { if (ownsHttp) http.Dispose(); return ValueTask.CompletedTask; }
 
     private async Task<JsonElement> ReadAuthenticationAsync(CancellationToken ct)
     {
         var oauth = await TryReadAuthenticationAsync(ct);
-        if (IsUsable(oauth)) return oauth!.Value;
-        if (refreshAuthentication != null)
+        if (HasUsableAccessToken(oauth) && !ShouldRefresh(oauth!.Value)) return oauth.Value;
+        try
         {
-            try { await refreshAuthentication(ct); }
-            catch (Exception e) when (!ct.IsCancellationRequested) { throw new UnauthorizedAccessException("Claude Code login is required.", e); }
-            oauth = await TryReadAuthenticationAsync(ct);
-            if (IsUsable(oauth)) return oauth!.Value;
+            if (await TryRefreshAsync(oauth, ct))
+            {
+                var refreshed = await TryReadAuthenticationAsync(ct);
+                if (HasUsableAccessToken(refreshed)) return refreshed!.Value;
+            }
         }
+        catch (Exception e) when (!ct.IsCancellationRequested)
+        {
+            if (!HasUsableAccessToken(oauth)) throw new UnauthorizedAccessException("Claude Code login is required.", e);
+        }
+        if (HasUsableAccessToken(oauth)) return oauth!.Value;
         throw new UnauthorizedAccessException("Claude Code login is required.");
+    }
+
+    private async Task<JsonElement> RefreshAndReadAsync(JsonElement oauth, CancellationToken ct)
+    {
+        try
+        {
+            if (!await TryRefreshAsync(oauth, ct)) throw new UnauthorizedAccessException("Claude Code login is required.");
+            var refreshed = await TryReadAuthenticationAsync(ct);
+            return HasUsableAccessToken(refreshed) ? refreshed!.Value : throw new UnauthorizedAccessException("Claude Code login is required.");
+        }
+        catch (Exception e) when (e is not UnauthorizedAccessException && !ct.IsCancellationRequested)
+        { throw new UnauthorizedAccessException("Claude Code login is required.", e); }
+    }
+
+    private async Task<JsonDocument> ReadUsageAsync(string token, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.anthropic.com/api/oauth/usage");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.TryAddWithoutValidation("anthropic-beta", "oauth-2025-04-20");
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new HttpRequestException("Claude Code usage HTTP 401.", null, response.StatusCode);
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+            throw new UnauthorizedAccessException("Claude Code auth/plan unavailable (HTTP 403).");
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"Claude Code usage HTTP {(int)response.StatusCode}.", null, response.StatusCode);
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        return await JsonDocument.ParseAsync(stream, cancellationToken: ct);
     }
 
     private async Task<JsonElement?> TryReadAuthenticationAsync(CancellationToken ct)
@@ -183,12 +218,81 @@ public sealed class ClaudeProvider : IUsageProvider
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
 
-    private static bool IsUsable(JsonElement? oauth)
+    private static bool HasUsableAccessToken(JsonElement? oauth)
     {
         if (oauth is not { } value || string.IsNullOrWhiteSpace(value.Text("accessToken"))) return false;
         if (value.Get("expiresAt") is not { ValueKind: JsonValueKind.Number } expiry || !expiry.TryGetInt64(out var milliseconds)) return true;
-        try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) > DateTimeOffset.UtcNow.AddMinutes(1); }
+        try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) > DateTimeOffset.UtcNow; }
         catch (ArgumentOutOfRangeException) { return false; }
     }
 
+    private static bool ShouldRefresh(JsonElement oauth)
+    {
+        if (oauth.Get("expiresAt") is not { ValueKind: JsonValueKind.Number } expiry || !expiry.TryGetInt64(out var milliseconds)) return false;
+        try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) <= DateTimeOffset.UtcNow + RefreshLeadTime; }
+        catch (ArgumentOutOfRangeException) { return true; }
+    }
+
+    private async Task<bool> TryRefreshAsync(JsonElement? oauth, CancellationToken ct)
+    {
+        if (refreshAuthentication != null)
+        {
+            await refreshAuthentication(ct);
+            return true;
+        }
+        if (oauth is not { } value || string.IsNullOrWhiteSpace(value.Text("refreshToken")) || ReadScopes(value) is not { Length: > 0 }) return false;
+        if (value.Get("refreshTokenExpiresAt") is { ValueKind: JsonValueKind.Number } expiry && expiry.TryGetInt64(out var milliseconds))
+        {
+            try { if (DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) <= DateTimeOffset.UtcNow) return false; }
+            catch (ArgumentOutOfRangeException) { return false; }
+        }
+        await RefreshClaudeAuthenticationAsync(value, ct);
+        return true;
+    }
+
+    private async Task RefreshClaudeAuthenticationAsync(JsonElement oauth, CancellationToken ct)
+    {
+        var executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
+        if (!File.Exists(executable)) executable = Executables.FindOnPath("claude.exe") ?? throw new FileNotFoundException("Claude Code が見つかりません。");
+        var info = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        info.ArgumentList.Add("auth");
+        info.ArgumentList.Add("login");
+        info.Environment["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"] = oauth.Text("refreshToken")!;
+        info.Environment["CLAUDE_CODE_OAUTH_SCOPES"] = ReadScopes(oauth)!;
+        info.Environment["CLAUDE_CONFIG_DIR"] = Path.GetDirectoryName(credentialsPath)!;
+        info.Environment.Remove("CLAUDE_CODE_OAUTH_TOKEN");
+
+        using var process = Process.Start(info) ?? throw new IOException("Claude Code を起動できません。");
+        try
+        {
+            var output = process.StandardOutput.ReadToEndAsync(ct);
+            var error = process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+            await Task.WhenAll(output, error);
+            if (process.ExitCode != 0) throw new UnauthorizedAccessException("Claude Code token refresh failed.");
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                try { process.Kill(true); }
+                catch (InvalidOperationException) { }
+            }
+        }
+    }
+
+    private static string? ReadScopes(JsonElement oauth)
+    {
+        if (oauth.Get("scopes") is not { } scopes) return null;
+        if (scopes.ValueKind == JsonValueKind.String) return scopes.GetString();
+        return scopes.ValueKind == JsonValueKind.Array
+            ? string.Join(' ', scopes.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()).Where(x => !string.IsNullOrWhiteSpace(x)))
+            : null;
+    }
 }

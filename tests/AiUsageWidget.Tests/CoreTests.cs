@@ -95,6 +95,55 @@ public sealed class CoreTests : IDisposable
         var snapshot = await provider.GetSnapshotAsync(default);
         Assert.True(refreshed); Assert.Equal("pro", snapshot.Plan);
     }
+    [Fact] public async Task ClaudeProviderRefreshesBeforeAccessTokenExpires()
+    {
+        var credentials = Path.Combine(root, "expiring-credentials.json"); Directory.CreateDirectory(root); var refreshed = false;
+        File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "expiring", refreshToken = "refresh", scopes = new[] { "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds() } }));
+        Task Refresh(CancellationToken _)
+        {
+            refreshed = true;
+            File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "fresh", refreshToken = "rotated", scopes = new[] { "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddHours(8).ToUnixTimeMilliseconds() } }));
+            return Task.CompletedTask;
+        }
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.OK, "{}"));
+        await using var provider = new ClaudeProvider(root, http, credentials, Refresh);
+        await provider.GetSnapshotAsync(default);
+        Assert.True(refreshed);
+    }
+    [Fact] public async Task ClaudeProviderKeepsUnexpiredAccessTokenWhenProactiveRefreshFails()
+    {
+        var credentials = Path.Combine(root, "fallback-credentials.json"); Directory.CreateDirectory(root);
+        File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "still-valid", refreshToken = "invalid", scopes = new[] { "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds() } }));
+        Task Refresh(CancellationToken _) => Task.FromException(new IOException("refresh failed"));
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.OK, "{}"));
+        await using var provider = new ClaudeProvider(root, http, credentials, Refresh);
+        var snapshot = await provider.GetSnapshotAsync(default);
+        Assert.Equal(UsageStatus.AuthenticationRequired, snapshot.Status);
+    }
+    [Fact] public async Task ClaudeProviderRefreshesAndRetriesAfterUnauthorizedUsageResponse()
+    {
+        var credentials = Path.Combine(root, "unauthorized-credentials.json"); Directory.CreateDirectory(root); var refreshed = false;
+        File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "rejected", refreshToken = "refresh", scopes = new[] { "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddHours(8).ToUnixTimeMilliseconds() } }));
+        Task Refresh(CancellationToken _)
+        {
+            refreshed = true;
+            File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "accepted", refreshToken = "rotated", scopes = new[] { "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddHours(8).ToUnixTimeMilliseconds() } }));
+            return Task.CompletedTask;
+        }
+        var handler = new UnauthorizedThenSuccessHandler();
+        using var http = new HttpClient(handler);
+        await using var provider = new ClaudeProvider(root, http, credentials, Refresh);
+        await provider.GetSnapshotAsync(default);
+        Assert.True(refreshed); Assert.Equal(2, handler.Requests);
+    }
+    [Fact] public async Task ClaudeProviderDoesNotRefreshWithExpiredRefreshToken()
+    {
+        var credentials = Path.Combine(root, "expired-credentials.json"); Directory.CreateDirectory(root);
+        File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "expired", refreshToken = "expired-refresh", scopes = new[] { "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeMilliseconds(), refreshTokenExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeMilliseconds() } }));
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.OK, "{}"));
+        await using var provider = new ClaudeProvider(root, http, credentials);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => provider.GetSnapshotAsync(default));
+    }
     [Fact] public void ClaudeInstallUninstallPreservesOtherSettingsAndRejectsOverwrite()
     {
         var home = Path.Combine(root, "home"); Directory.CreateDirectory(home); var bridge = Path.Combine(root,"bridge.exe"); File.WriteAllText(bridge, "test");
@@ -137,6 +186,16 @@ public sealed class CoreTests : IDisposable
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(json) });
+    }
+    private sealed class UnauthorizedThenSuccessHandler : HttpMessageHandler
+    {
+        public int Requests { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests++;
+            return Task.FromResult(new HttpResponseMessage(Requests == 1 ? HttpStatusCode.Unauthorized : HttpStatusCode.OK)
+            { Content = new StringContent("{}") });
+        }
     }
     public void Dispose() { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); if (Directory.Exists(root)) Directory.Delete(root, true); }
 }

@@ -1,0 +1,149 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing v-prefixed tag to create or update the GitHub Release for
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: 10.0.x
+  PROJECT_PATH: src\AiUsageWidget.App\AiUsageWidget.App.csproj
+  SOLUTION_PATH: AiUsageWidget.slnx
+
+jobs:
+  release:
+    name: Build and publish Windows x64 release
+    runs-on: windows-latest
+
+    steps:
+      - name: Resolve release tag
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REQUESTED_TAG: ${{ inputs.tag_name }}
+        run: |
+          $releaseTag = if ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $env:REQUESTED_TAG
+          }
+          else {
+            $env:REF_NAME
+          }
+
+          if ($releaseTag -notmatch '^v[0-9A-Za-z][0-9A-Za-z._+-]*$') {
+            throw "Release tag must start with 'v' and contain only letters, numbers, '.', '_', '+', or '-'."
+          }
+
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_TAG=$releaseTag" -Encoding utf8
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore $env:SOLUTION_PATH
+
+      - name: Test
+        run: dotnet test $env:SOLUTION_PATH --configuration Release --no-restore
+
+      - name: Publish single-file executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE "publish\win-x64"
+
+          dotnet publish $env:PROJECT_PATH `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            --output $publishDir `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:IncludeAllContentForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:PublishTrimmed=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "dotnet publish failed."
+          }
+
+          $publishedFiles = @(Get-ChildItem -LiteralPath $publishDir -File)
+          $exePath = Join-Path $publishDir "AiUsageWidget.exe"
+          if ($publishedFiles.Count -ne 1 -or -not (Test-Path -LiteralPath $exePath)) {
+            throw "Expected one published file, AiUsageWidget.exe, but found $($publishedFiles.Count)."
+          }
+
+      - name: Package release asset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packageDir = Join-Path $env:GITHUB_WORKSPACE "package\AiUsageWidget-$env:RELEASE_TAG-win-x64"
+          $artifactDir = Join-Path $env:GITHUB_WORKSPACE "artifacts"
+          New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
+
+          Copy-Item -LiteralPath "publish\win-x64\AiUsageWidget.exe" -Destination $packageDir
+          Copy-Item -LiteralPath "README.md" -Destination $packageDir
+          Copy-Item -LiteralPath "LICENSE" -Destination $packageDir
+          Copy-Item -LiteralPath "THIRD-PARTY-NOTICES.md" -Destination $packageDir
+          Copy-Item -LiteralPath "LICENSES" -Destination $packageDir -Recurse
+
+          $dotnetLicense = Join-Path $env:DOTNET_ROOT "LICENSE.txt"
+          $dotnetNotices = Join-Path $env:DOTNET_ROOT "ThirdPartyNotices.txt"
+          if (-not (Test-Path -LiteralPath $dotnetLicense) -or -not (Test-Path -LiteralPath $dotnetNotices)) {
+            throw ".NET redistribution notices were not found under DOTNET_ROOT."
+          }
+          Copy-Item -LiteralPath $dotnetLicense -Destination (Join-Path $packageDir "LICENSES\dotnet-LICENSE.txt")
+          Copy-Item -LiteralPath $dotnetNotices -Destination (Join-Path $packageDir "LICENSES\dotnet-THIRD-PARTY-NOTICES.txt")
+
+          $zipPath = Join-Path $artifactDir "AiUsageWidget-$env:RELEASE_TAG-win-x64.zip"
+          Compress-Archive -Path (Join-Path $packageDir "*") -DestinationPath $zipPath -Force
+
+          if (-not (Test-Path -LiteralPath $zipPath)) {
+            throw "Release ZIP was not created: $zipPath"
+          }
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $assetPath = Join-Path $env:GITHUB_WORKSPACE "artifacts\AiUsageWidget-$env:RELEASE_TAG-win-x64.zip"
+
+          $releaseExists = $false
+          try {
+            gh release view $env:RELEASE_TAG *> $null
+            $releaseExists = $LASTEXITCODE -eq 0
+          }
+          catch {
+            $releaseExists = $false
+          }
+
+          if ($releaseExists) {
+            gh release upload $env:RELEASE_TAG $assetPath --clobber
+          }
+          else {
+            gh release create $env:RELEASE_TAG $assetPath --title $env:RELEASE_TAG --generate-notes --verify-tag
+          }

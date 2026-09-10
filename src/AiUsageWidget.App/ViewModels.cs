@@ -24,7 +24,9 @@ public sealed class QuotaViewModel(QuotaWindow quota, bool showReset = true)
     private static string Format(double? value) => value is { } n ? n.ToString("#,0.##") : "取得不可";
     public double Used => quota.UsedPercent ?? 0;
     public Brush Color => new SolidColorBrush((Color)ColorConverter.ConvertFromString(quota.RemainingPercent is <= 10 ? "#FF8E95" : quota.RemainingPercent is <= 20 ? "#F4C56A" : "#6CE6C0"));
-    public System.Windows.Visibility ResetVisibility => showReset ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+    public System.Windows.Visibility ResetVisibility => showReset &&
+        (quota.Unlimited || quota.ResetsAt != null || quota.RemainingPercent is < 100)
+        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
     public string Reset => quota.Unlimited ? "制限なし" : quota.ResetsAt is not { } reset ? "リセット時刻：取得不可" : reset <= DateTimeOffset.UtcNow ? "リセット確認待ち" : $"{reset.ToLocalTime():M/d HH:mm} にリセット · あと {Duration(reset - DateTimeOffset.UtcNow)}";
     private static string Duration(TimeSpan span) => span.TotalDays >= 1 ? $"{(int)span.TotalDays}日 {span.Hours}時間" : span.TotalHours >= 1 ? $"{(int)span.TotalHours}時間 {span.Minutes}分" : $"{Math.Max(1, (int)span.TotalMinutes)}分";
 }

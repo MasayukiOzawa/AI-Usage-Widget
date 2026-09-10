@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Diagnostics;
 using System.Text.Json;
 using GitHub.Copilot;
 namespace AiUsageWidget.Core;
@@ -122,7 +121,7 @@ public sealed class ClaudeProvider : IUsageProvider
     private readonly HttpClient http;
     private readonly bool ownsHttp;
     private readonly string credentialsPath;
-    private readonly Func<CancellationToken, Task> refreshAuthentication;
+    private readonly Func<CancellationToken, Task>? refreshAuthentication;
     public ClaudeProvider(string root, HttpClient? httpClient = null, string? credentialsPath = null,
         Func<CancellationToken, Task>? refreshAuthentication = null)
     {
@@ -130,7 +129,7 @@ public sealed class ClaudeProvider : IUsageProvider
         ownsHttp = httpClient == null;
         http = httpClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(20) };
         this.credentialsPath = credentialsPath ?? Path.Combine(AppPaths.ClaudeHome, ".credentials.json");
-        this.refreshAuthentication = refreshAuthentication ?? RefreshClaudeAuthenticationAsync;
+        this.refreshAuthentication = refreshAuthentication;
     }
     public ProviderDescriptor Descriptor { get; } = new("claude", "Claude Code", "#EAAF8C", UpdateMode.Poll, UsageCapabilities.Quota, "https://code.claude.com/docs/en/authentication") { MinimumRefreshSeconds = 300 };
     public async Task<UsageSnapshot> GetSnapshotAsync(CancellationToken ct)
@@ -164,10 +163,14 @@ public sealed class ClaudeProvider : IUsageProvider
     {
         var oauth = await TryReadAuthenticationAsync(ct);
         if (IsUsable(oauth)) return oauth!.Value;
-        try { await refreshAuthentication(ct); }
-        catch (Exception e) when (!ct.IsCancellationRequested) { throw new UnauthorizedAccessException("Claude Code login is required.", e); }
-        oauth = await TryReadAuthenticationAsync(ct);
-        return IsUsable(oauth) ? oauth!.Value : throw new UnauthorizedAccessException("Claude Code login is required.");
+        if (refreshAuthentication != null)
+        {
+            try { await refreshAuthentication(ct); }
+            catch (Exception e) when (!ct.IsCancellationRequested) { throw new UnauthorizedAccessException("Claude Code login is required.", e); }
+            oauth = await TryReadAuthenticationAsync(ct);
+            if (IsUsable(oauth)) return oauth!.Value;
+        }
+        throw new UnauthorizedAccessException("Claude Code login is required.");
     }
 
     private async Task<JsonElement?> TryReadAuthenticationAsync(CancellationToken ct)
@@ -188,22 +191,4 @@ public sealed class ClaudeProvider : IUsageProvider
         catch (ArgumentOutOfRangeException) { return false; }
     }
 
-    private static async Task RefreshClaudeAuthenticationAsync(CancellationToken ct)
-    {
-        var native = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
-        var info = new ProcessStartInfo(File.Exists(native) ? native : "claude.exe")
-        {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
-            StandardOutputEncoding = System.Text.Encoding.UTF8, StandardErrorEncoding = System.Text.Encoding.UTF8
-        };
-        foreach (var arg in new[] { "auth", "status", "--json" }) info.ArgumentList.Add(arg);
-        using var process = Process.Start(info) ?? throw new IOException("Claude Code を起動できません。");
-        var outputTask = process.StandardOutput.ReadToEndAsync(ct);
-        var errorTask = process.StandardError.ReadToEndAsync(ct);
-        await process.WaitForExitAsync(ct);
-        var output = await outputTask; var error = await errorTask;
-        if (process.ExitCode != 0) throw new UnauthorizedAccessException(error);
-        using var status = JsonDocument.Parse(output);
-        if (!status.RootElement.Flag("loggedIn")) throw new UnauthorizedAccessException("Claude Code login is required.");
-    }
 }

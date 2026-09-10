@@ -1,6 +1,8 @@
 **/bin/
 **/obj/
-artifacts/
+/artifacts/
+/publish/
+/package/
 .vs/
 TestResults/
 *.user

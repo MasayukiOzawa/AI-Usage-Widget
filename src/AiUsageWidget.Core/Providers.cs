@@ -124,14 +124,24 @@ public sealed class ClaudeProvider : IUsageProvider
     private readonly bool ownsHttp;
     private readonly string credentialsPath;
     private readonly Func<CancellationToken, Task>? refreshAuthentication;
+    private readonly Func<ProcessStartInfo, CancellationToken, Task<int>> processRunner;
+    private readonly Func<string?> findClaudeExecutable;
     public ClaudeProvider(string root, HttpClient? httpClient = null, string? credentialsPath = null,
-        Func<CancellationToken, Task>? refreshAuthentication = null)
+        Func<CancellationToken, Task>? refreshAuthentication = null,
+        Func<ProcessStartInfo, CancellationToken, Task<int>>? processRunner = null,
+        Func<string?>? findClaudeExecutable = null)
     {
         _ = root;
         ownsHttp = httpClient == null;
         http = httpClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(20) };
         this.credentialsPath = credentialsPath ?? Path.Combine(AppPaths.ClaudeHome, ".credentials.json");
         this.refreshAuthentication = refreshAuthentication;
+        this.processRunner = processRunner ?? RunProcessAsync;
+        this.findClaudeExecutable = findClaudeExecutable ?? (() =>
+        {
+            var local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
+            return File.Exists(local) ? local : Executables.FindOnPath("claude.exe");
+        });
     }
     public ProviderDescriptor Descriptor { get; } = new("claude", "Claude Code", "#EAAF8C", UpdateMode.Poll, UsageCapabilities.Quota, "https://code.claude.com/docs/en/authentication") { MinimumRefreshSeconds = 300 };
     public async Task<UsageSnapshot> GetSnapshotAsync(CancellationToken ct)
@@ -189,7 +199,7 @@ public sealed class ClaudeProvider : IUsageProvider
             var refreshed = await TryReadAuthenticationAsync(ct);
             return HasUsableAccessToken(refreshed) ? refreshed!.Value : throw new UnauthorizedAccessException("Claude Code login is required.");
         }
-        catch (Exception e) when (e is not UnauthorizedAccessException && !ct.IsCancellationRequested)
+        catch (Exception e) when (!ct.IsCancellationRequested)
         { throw new UnauthorizedAccessException("Claude Code login is required.", e); }
     }
 
@@ -253,8 +263,7 @@ public sealed class ClaudeProvider : IUsageProvider
 
     private async Task RefreshClaudeAuthenticationAsync(JsonElement oauth, CancellationToken ct)
     {
-        var executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
-        if (!File.Exists(executable)) executable = Executables.FindOnPath("claude.exe") ?? throw new FileNotFoundException("Claude Code が見つかりません。");
+        var executable = findClaudeExecutable() ?? throw new FileNotFoundException("Claude Code が見つかりません。");
         var info = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
@@ -269,6 +278,11 @@ public sealed class ClaudeProvider : IUsageProvider
         info.Environment["CLAUDE_CONFIG_DIR"] = Path.GetDirectoryName(credentialsPath)!;
         info.Environment.Remove("CLAUDE_CODE_OAUTH_TOKEN");
 
+        if (await processRunner(info, ct) != 0) throw new UnauthorizedAccessException("Claude Code token refresh failed.");
+    }
+
+    private static async Task<int> RunProcessAsync(ProcessStartInfo info, CancellationToken ct)
+    {
         using var process = Process.Start(info) ?? throw new IOException("Claude Code を起動できません。");
         try
         {
@@ -276,7 +290,7 @@ public sealed class ClaudeProvider : IUsageProvider
             var error = process.StandardError.ReadToEndAsync(ct);
             await process.WaitForExitAsync(ct);
             await Task.WhenAll(output, error);
-            if (process.ExitCode != 0) throw new UnauthorizedAccessException("Claude Code token refresh failed.");
+            return process.ExitCode;
         }
         finally
         {

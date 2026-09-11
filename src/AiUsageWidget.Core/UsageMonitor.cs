@@ -53,7 +53,7 @@ public sealed class UsageMonitor : IAsyncDisposable
             if (lifetime.IsCancellationRequested) return;
             var rateLimited = error is HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests };
             Interlocked.Exchange(ref slot.NextTicks, DateTimeOffset.UtcNow.AddSeconds(rateLimited ? 300 : RetrySeconds(++slot.Failures)).UtcTicks);
-            var auth = error.Message.Contains("auth", StringComparison.OrdinalIgnoreCase) || error.Message.Contains("login", StringComparison.OrdinalIgnoreCase) || error.Message.Contains("401");
+            var auth = error is UnauthorizedAccessException || error.Message.Contains("auth", StringComparison.OrdinalIgnoreCase) || error.Message.Contains("login", StringComparison.OrdinalIgnoreCase) || error.Message.Contains("401");
             var message = auth ? "ログインが必要です。設定の接続案内をご確認ください。" : error is FileNotFoundException ? "実行ファイルが見つかりません。設定をご確認ください。" : "更新失敗 · 自動で再試行します。接続と設定をご確認ください。";
             var previous = slot.Last;
             if (previous == null)

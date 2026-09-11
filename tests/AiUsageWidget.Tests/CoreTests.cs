@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Net;
+using System.Diagnostics;
 using AiUsageWidget.Core;
 using Xunit;
 namespace AiUsageWidget.Tests;
@@ -121,6 +122,29 @@ public sealed class CoreTests : IDisposable
         await provider.GetSnapshotAsync(default);
         Assert.True(refreshed);
     }
+    [Fact] public async Task ClaudeProviderBuildsExpectedCliRefreshProcess()
+    {
+        var credentials = Path.Combine(root, "cli-refresh-credentials.json"); Directory.CreateDirectory(root);
+        File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "old-access", refreshToken = "private-refresh", scopes = new[] { "user:profile", "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds() } }));
+        ProcessStartInfo? captured = null;
+        Task<int> Run(ProcessStartInfo info, CancellationToken _)
+        {
+            captured = info;
+            File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "new-access", refreshToken = "rotated", scopes = new[] { "user:profile", "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddHours(8).ToUnixTimeMilliseconds() } }));
+            return Task.FromResult(0);
+        }
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.OK, """{"five_hour":{"utilization":25}}"""));
+        await using var provider = new ClaudeProvider(root, http, credentials, processRunner: Run, findClaudeExecutable: () => @"C:\fake\claude.exe");
+        var snapshot = await provider.GetSnapshotAsync(default);
+        Assert.Equal(UsageStatus.Ready, snapshot.Status);
+        Assert.Equal(@"C:\fake\claude.exe", captured!.FileName);
+        Assert.Equal(["auth", "login"], captured.ArgumentList);
+        Assert.Equal("private-refresh", captured.Environment["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"]);
+        Assert.Equal("user:profile user:inference", captured.Environment["CLAUDE_CODE_OAUTH_SCOPES"]);
+        Assert.Equal(Path.GetDirectoryName(credentials), captured.Environment["CLAUDE_CONFIG_DIR"]);
+        Assert.False(captured.Environment.ContainsKey("CLAUDE_CODE_OAUTH_TOKEN"));
+        Assert.DoesNotContain("private-refresh", JsonSerializer.Serialize(snapshot));
+    }
     [Fact] public async Task ClaudeProviderExposesTokenExpiryDetailsWithoutTokenValues()
     {
         var credentials = Path.Combine(root, "detail-credentials.json"); Directory.CreateDirectory(root);
@@ -141,10 +165,12 @@ public sealed class CoreTests : IDisposable
         var credentials = Path.Combine(root, "fallback-credentials.json"); Directory.CreateDirectory(root);
         File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "still-valid", refreshToken = "invalid", scopes = new[] { "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds() } }));
         Task Refresh(CancellationToken _) => Task.FromException(new IOException("refresh failed"));
-        using var http = new HttpClient(new StubHandler(HttpStatusCode.OK, "{}"));
+        var handler = new StubHandler(HttpStatusCode.OK, """{"five_hour":{"utilization":25}}""");
+        using var http = new HttpClient(handler);
         await using var provider = new ClaudeProvider(root, http, credentials, Refresh);
         var snapshot = await provider.GetSnapshotAsync(default);
-        Assert.Equal(UsageStatus.AuthenticationRequired, snapshot.Status);
+        Assert.Equal(UsageStatus.Ready, snapshot.Status);
+        Assert.Equal(["still-valid"], handler.BearerTokens);
     }
     [Fact] public async Task ClaudeProviderRefreshesAndRetriesAfterUnauthorizedUsageResponse()
     {
@@ -159,8 +185,18 @@ public sealed class CoreTests : IDisposable
         var handler = new UnauthorizedThenSuccessHandler();
         using var http = new HttpClient(handler);
         await using var provider = new ClaudeProvider(root, http, credentials, Refresh);
-        await provider.GetSnapshotAsync(default);
-        Assert.True(refreshed); Assert.Equal(2, handler.Requests);
+        var snapshot = await provider.GetSnapshotAsync(default);
+        Assert.True(refreshed); Assert.Equal(UsageStatus.Ready, snapshot.Status); Assert.Equal(["rejected", "accepted"], handler.BearerTokens);
+    }
+    [Fact] public async Task ClaudeProviderReportsLoginRequiredWhenRefreshAfterUnauthorizedFails()
+    {
+        var credentials = Path.Combine(root, "rejected-credentials.json"); Directory.CreateDirectory(root);
+        File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "rejected", refreshToken = "invalid", scopes = new[] { "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddHours(8).ToUnixTimeMilliseconds() } }));
+        Task Refresh(CancellationToken _) => Task.FromException(new UnauthorizedAccessException("refresh failed"));
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.Unauthorized, "{}"));
+        await using var provider = new ClaudeProvider(root, http, credentials, Refresh);
+        var error = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => provider.GetSnapshotAsync(default));
+        Assert.Contains("login is required", error.Message);
     }
     [Fact] public async Task ClaudeProviderDoesNotRefreshWithExpiredRefreshToken()
     {
@@ -202,6 +238,16 @@ public sealed class CoreTests : IDisposable
         monitor.Updated += (d,s) => { if (d.Id == "good" && s.Status == UsageStatus.Ready) ready.TrySetResult(); };
         monitor.Start(); await ready.Task.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Single(db.Read("good",1));
     }
+    [Fact] public async Task UnauthorizedAccessFailureIsReportedAsAuthenticationRequired()
+    {
+        using var db = new HistoryStore(root);
+        var result = new TaskCompletionSource<UsageSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var monitor = new UsageMonitor([new ExceptionProvider(new UnauthorizedAccessException("refresh failed"))], db, new WidgetSettings());
+        monitor.Updated += (_, snapshot) => result.TrySetResult(snapshot);
+        monitor.Start();
+        var snapshot = await result.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(UsageStatus.AuthenticationRequired, snapshot.Status);
+    }
     [Fact] public async Task HistoryWriteFailureKeepsSuccessfulProviderConnected()
     {
         using var db = new HistoryStore(root);
@@ -224,19 +270,30 @@ public sealed class CoreTests : IDisposable
         public Task<UsageSnapshot> GetSnapshotAsync(CancellationToken ct) => fail ? Task.FromException<UsageSnapshot>(new IOException("offline")) : Task.FromResult(new UsageSnapshot(id,"a",DateTimeOffset.UtcNow,"test",UsageStatus.Ready,[]));
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
+    private sealed class ExceptionProvider(Exception error) : IUsageProvider
+    {
+        public ProviderDescriptor Descriptor { get; } = new("exception", "Exception", "#FFFFFF", UpdateMode.Poll, UsageCapabilities.Quota, "");
+        public Task<UsageSnapshot> GetSnapshotAsync(CancellationToken ct) => Task.FromException<UsageSnapshot>(error);
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
     private sealed class StubHandler(HttpStatusCode status, string json) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(json) });
+        public List<string?> BearerTokens { get; } = [];
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            BearerTokens.Add(request.Headers.Authorization?.Parameter);
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(json) });
+        }
     }
     private sealed class UnauthorizedThenSuccessHandler : HttpMessageHandler
     {
         public int Requests { get; private set; }
+        public List<string?> BearerTokens { get; } = [];
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Requests++;
+            Requests++; BearerTokens.Add(request.Headers.Authorization?.Parameter);
             return Task.FromResult(new HttpResponseMessage(Requests == 1 ? HttpStatusCode.Unauthorized : HttpStatusCode.OK)
-            { Content = new StringContent("{}") });
+            { Content = new StringContent(Requests == 1 ? "{}" : """{"five_hour":{"utilization":25}}""") });
         }
     }
     public void Dispose() { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); if (Directory.Exists(root)) Directory.Delete(root, true); }

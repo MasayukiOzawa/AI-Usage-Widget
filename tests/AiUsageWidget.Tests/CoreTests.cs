@@ -110,6 +110,21 @@ public sealed class CoreTests : IDisposable
         await provider.GetSnapshotAsync(default);
         Assert.True(refreshed);
     }
+    [Fact] public async Task ClaudeProviderExposesTokenExpiryDetailsWithoutTokenValues()
+    {
+        var credentials = Path.Combine(root, "detail-credentials.json"); Directory.CreateDirectory(root);
+        var accessExpiry = DateTimeOffset.UtcNow.AddHours(8);
+        File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "private-access", refreshToken = "private-refresh", scopes = new[] { "user:inference" }, expiresAt = accessExpiry.ToUnixTimeMilliseconds() } }));
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.OK, "{}"));
+        await using var provider = new ClaudeProvider(root, http, credentials);
+        var snapshot = await provider.GetSnapshotAsync(default);
+        Assert.Equal(3, snapshot.Details?.Count);
+        Assert.Contains(snapshot.Details!, x => x.Label == "アクセストークン期限" && x.Value.Contains("まで"));
+        Assert.Contains(snapshot.Details!, x => x.Label == "自動更新開始");
+        Assert.Contains(snapshot.Details!, x => x.Label == "リフレッシュ期限" && x.Value == "取得不可");
+        Assert.DoesNotContain("private-access", JsonSerializer.Serialize(snapshot.Details));
+        Assert.DoesNotContain("private-refresh", JsonSerializer.Serialize(snapshot.Details));
+    }
     [Fact] public async Task ClaudeProviderKeepsUnexpiredAccessTokenWhenProactiveRefreshFails()
     {
         var credentials = Path.Combine(root, "fallback-credentials.json"); Directory.CreateDirectory(root);

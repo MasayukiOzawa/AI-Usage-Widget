@@ -149,13 +149,14 @@ public sealed class ClaudeProvider : IUsageProvider
             var windows = ProviderParsers.ClaudeUsage(usage.RootElement);
             var now = DateTimeOffset.UtcNow;
             var plan = oauth.Text("subscriptionType");
+            var details = AuthenticationDetails(oauth, now);
             var accountKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(oauth.Text("accessToken")!)));
             var models = await catalog.ReadAsync(accountKey, ModelCatalog.ClaudeAsync, ct);
             var capabilities = await capabilityCatalog.ReadAsync(accountKey, CapabilityCatalog.ClaudeAsync, ct);
             return windows.Count == 0
-                ? new("claude", "default", now, "Claude Code Usage", UsageStatus.AuthenticationRequired, []) { Plan = plan, Capabilities = capabilities }
-                : new("claude", "default", now, "Claude Code Usage", UsageStatus.Ready, windows) { Plan = plan, Models = models, ModelsMessage = catalog.Message, Capabilities = capabilities };
+                ? new("claude", "default", now, "Claude Code Usage", UsageStatus.AuthenticationRequired, []) { Plan = plan, Capabilities = capabilities, Details = details }
+                : new("claude", "default", now, "Claude Code Usage", UsageStatus.Ready, windows) { Plan = plan, Models = models, ModelsMessage = catalog.Message, Capabilities = capabilities, Details = details };
         }
     }
     public ValueTask DisposeAsync() { if (ownsHttp) http.Dispose(); return ValueTask.CompletedTask; }
@@ -295,4 +296,30 @@ public sealed class ClaudeProvider : IUsageProvider
             ? string.Join(' ', scopes.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()).Where(x => !string.IsNullOrWhiteSpace(x)))
             : null;
     }
+
+    private static IReadOnlyList<CapabilityLocation> AuthenticationDetails(JsonElement oauth, DateTimeOffset now)
+    {
+        var accessExpiry = MillisecondTimestamp(oauth, "expiresAt");
+        var refreshExpiry = MillisecondTimestamp(oauth, "refreshTokenExpiresAt");
+        var hasRefreshToken = !string.IsNullOrWhiteSpace(oauth.Text("refreshToken"));
+        return
+        [
+            new("アクセストークン期限", FormatExpiry(accessExpiry, now)),
+            new("自動更新開始", accessExpiry is null ? "取得不可" : accessExpiry.Value - RefreshLeadTime <= now
+                ? "更新対象（次回更新時に試行）" : FormatLocal(accessExpiry.Value - RefreshLeadTime)),
+            new("リフレッシュ期限", !hasRefreshToken ? "利用不可" : refreshExpiry is null ? "取得不可" : FormatExpiry(refreshExpiry, now))
+        ];
+    }
+
+    private static DateTimeOffset? MillisecondTimestamp(JsonElement oauth, string name)
+    {
+        if (oauth.Get(name) is not { ValueKind: JsonValueKind.Number } value || !value.TryGetInt64(out var milliseconds)) return null;
+        try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds); }
+        catch (ArgumentOutOfRangeException) { return null; }
+    }
+
+    private static string FormatExpiry(DateTimeOffset? expiry, DateTimeOffset now) => expiry is null
+        ? "取得不可"
+        : expiry <= now ? $"{FormatLocal(expiry.Value)}（期限切れ）" : $"{FormatLocal(expiry.Value)} まで";
+    private static string FormatLocal(DateTimeOffset value) => value.ToLocalTime().ToString("yyyy/M/d HH:mm");
 }

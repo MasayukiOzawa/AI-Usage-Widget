@@ -307,7 +307,7 @@ public sealed class ClaudeProvider : IUsageProvider
             new("アクセストークン期限", FormatExpiry(accessExpiry, now)),
             new("自動更新開始", accessExpiry is null ? "取得不可" : accessExpiry.Value - RefreshLeadTime <= now
                 ? "更新対象（次回更新時に試行）" : FormatLocal(accessExpiry.Value - RefreshLeadTime)),
-            new("リフレッシュ期限", !hasRefreshToken ? "利用不可" : refreshExpiry is null ? "取得不可" : FormatExpiry(refreshExpiry, now))
+            new("リフレッシュ期限", !hasRefreshToken ? "利用不可" : refreshExpiry is null ? "期限情報なし（自動更新可能）" : FormatExpiry(refreshExpiry, now))
         ];
     }
 

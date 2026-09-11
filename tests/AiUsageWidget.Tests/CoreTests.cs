@@ -129,10 +129,10 @@ public sealed class CoreTests : IDisposable
         using var http = new HttpClient(new StubHandler(HttpStatusCode.OK, "{}"));
         await using var provider = new ClaudeProvider(root, http, credentials);
         var snapshot = await provider.GetSnapshotAsync(default);
-        Assert.Equal(3, snapshot.Details?.Count);
+        Assert.Equal(2, snapshot.Details?.Count);
         Assert.Contains(snapshot.Details!, x => x.Label == "アクセストークン期限" && x.Value.Contains("まで"));
         Assert.Contains(snapshot.Details!, x => x.Label == "自動更新開始");
-        Assert.Contains(snapshot.Details!, x => x.Label == "リフレッシュ期限" && x.Value == "期限情報なし（自動更新可能）");
+        Assert.DoesNotContain(snapshot.Details!, x => x.Label == "リフレッシュ期限");
         Assert.DoesNotContain("private-access", JsonSerializer.Serialize(snapshot.Details));
         Assert.DoesNotContain("private-refresh", JsonSerializer.Serialize(snapshot.Details));
     }

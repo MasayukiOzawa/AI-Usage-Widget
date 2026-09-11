@@ -49,6 +49,17 @@ public sealed class CoreTests : IDisposable
         db.Record(snapshot); db.Record(snapshot); db.Record(snapshot with { ReceivedAt = DateTimeOffset.UtcNow.AddMinutes(1), Status = UsageStatus.Stale });
         Assert.Single(db.Read("claude", 7)); Assert.Empty(db.Read("codex", 7)); Assert.Empty(db.Read("claude", 7, "other"));
     }
+    [Fact] public void CorruptHistoryDatabaseIsPreservedAndRecreated()
+    {
+        Directory.CreateDirectory(root);
+        var database = Path.Combine(root, "history.db");
+        File.WriteAllText(database, "not a SQLite database");
+        using var db = new HistoryStore(root);
+        var snapshot = new UsageSnapshot("codex", "a", DateTimeOffset.UtcNow, "test", UsageStatus.Ready, [new("q", "Q", 75, null)]);
+        db.Record(snapshot);
+        Assert.Single(db.Read("codex", 1));
+        Assert.Single(Directory.GetFiles(root, "history.corrupt-*.db"));
+    }
     [Fact] public void TokensPersistSeparatelyWithoutDuplicatingEverySample()
     {
         using var db = new HistoryStore(root); var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -190,6 +201,22 @@ public sealed class CoreTests : IDisposable
         await using var monitor = new UsageMonitor([new FakeProvider("bad", true),new FakeProvider("good",false)], db, new WidgetSettings { Notifications = false });
         monitor.Updated += (d,s) => { if (d.Id == "good" && s.Status == UsageStatus.Ready) ready.TrySetResult(); };
         monitor.Start(); await ready.Task.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Single(db.Read("good",1));
+    }
+    [Fact] public async Task HistoryWriteFailureKeepsSuccessfulProviderConnected()
+    {
+        using var db = new HistoryStore(root);
+        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(root, "history.db")}"))
+        {
+            connection.Open(); using var command = connection.CreateCommand();
+            command.CommandText = "DROP TABLE readings"; command.ExecuteNonQuery();
+        }
+        var result = new TaskCompletionSource<UsageSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var monitor = new UsageMonitor([new FakeProvider("good", false)], db, new WidgetSettings());
+        monitor.Updated += (_, snapshot) => result.TrySetResult(snapshot);
+        monitor.Start();
+        var snapshot = await result.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(UsageStatus.Ready, snapshot.Status);
+        Assert.Contains("履歴", snapshot.Message);
     }
     private sealed class FakeProvider(string id, bool fail) : IUsageProvider
     {

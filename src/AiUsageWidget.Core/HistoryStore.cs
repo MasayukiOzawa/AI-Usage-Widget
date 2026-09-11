@@ -4,20 +4,92 @@ namespace AiUsageWidget.Core;
 public sealed record QuotaNotice(string ProviderId, string Label, double RemainingPercent);
 public sealed class HistoryStore : IDisposable
 {
-    private readonly SqliteConnection connection;
+    private readonly string databasePath;
+    private SqliteConnection connection;
     private readonly object sync = new();
     public HistoryStore(string root)
     {
         Directory.CreateDirectory(root);
-        connection = new(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "history.db") }.ToString()); connection.Open();
-        using var cmd = connection.CreateCommand();
+        databasePath = Path.Combine(root, "history.db");
+        connection = OpenHealthyDatabase();
+    }
+    private SqliteConnection OpenHealthyDatabase()
+    {
+        try
+        {
+            var candidate = OpenDatabase();
+            try
+            {
+                using var check = candidate.CreateCommand();
+                check.CommandText = "PRAGMA quick_check";
+                if (!string.Equals(check.ExecuteScalar()?.ToString(), "ok", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("The history database failed its integrity check.");
+                InitializeSchema(candidate);
+                return candidate;
+            }
+            catch
+            {
+                candidate.Dispose();
+                throw;
+            }
+        }
+        catch (InvalidDataException)
+        {
+            PreserveCorruptDatabase();
+            var replacement = OpenDatabase();
+            try { InitializeSchema(replacement); return replacement; }
+            catch { replacement.Dispose(); throw; }
+        }
+        catch (SqliteException error) when (IsCorruption(error))
+        {
+            PreserveCorruptDatabase();
+            var replacement = OpenDatabase();
+            try { InitializeSchema(replacement); return replacement; }
+            catch { replacement.Dispose(); throw; }
+        }
+    }
+    private static bool IsCorruption(SqliteException error) => error.SqliteErrorCode is 11 or 26;
+    private SqliteConnection OpenDatabase()
+    {
+        var result = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath }.ToString());
+        try
+        {
+            result.Open();
+            return result;
+        }
+        catch
+        {
+            result.Dispose();
+            throw;
+        }
+    }
+    private static void InitializeSchema(SqliteConnection target)
+    {
+        using var cmd = target.CreateCommand();
         cmd.CommandText = """
             PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS readings(provider TEXT NOT NULL, account TEXT NOT NULL, stamp INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(provider,account,stamp));
             CREATE INDEX IF NOT EXISTS readings_time ON readings(stamp);
             CREATE TABLE IF NOT EXISTS token_days(provider TEXT NOT NULL, account TEXT NOT NULL, day TEXT NOT NULL, tokens INTEGER NOT NULL, PRIMARY KEY(provider,account,day));
             CREATE TABLE IF NOT EXISTS alerts(provider TEXT NOT NULL, account TEXT NOT NULL, quota TEXT NOT NULL, period TEXT NOT NULL, mask INTEGER NOT NULL, PRIMARY KEY(provider,account,quota));
-            """; cmd.ExecuteNonQuery();
+            """;
+        cmd.ExecuteNonQuery();
+    }
+    private void PreserveCorruptDatabase()
+    {
+        SqliteConnection.ClearAllPools();
+        if (!File.Exists(databasePath)) return;
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var backup = Path.Combine(Path.GetDirectoryName(databasePath)!, $"history.corrupt-{stamp}.db");
+        for (var suffix = 2; File.Exists(backup); suffix++)
+            backup = Path.Combine(Path.GetDirectoryName(databasePath)!, $"history.corrupt-{stamp}-{suffix}.db");
+        File.Move(databasePath, backup);
+        MoveSidecar(databasePath + "-wal", backup + "-wal");
+        MoveSidecar(databasePath + "-shm", backup + "-shm");
+    }
+    private static void MoveSidecar(string source, string destination)
+    {
+        if (File.Exists(source)) File.Move(source, destination);
     }
     public void Record(UsageSnapshot snapshot)
     {

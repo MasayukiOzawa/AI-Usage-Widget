@@ -30,6 +30,7 @@ public sealed record UsageSnapshot(string ProviderId, string AccountKey, DateTim
     public IReadOnlyList<AvailableModel>? Models { get; init; }
     public string? ModelsMessage { get; init; }
     public ProviderCapabilities? Capabilities { get; init; }
+    public IReadOnlyList<CapabilityLocation>? Details { get; init; }
 }
 public interface IUsageProvider : IAsyncDisposable
 {

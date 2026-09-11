@@ -35,9 +35,16 @@ public sealed class UsageMonitor : IAsyncDisposable
             var snapshot = await slot.Provider.GetSnapshotAsync(timeout.Token);
             slot.Failures = 0; slot.Last = snapshot;
             var signature = System.Text.Json.JsonSerializer.Serialize(new { snapshot.AccountKey, snapshot.Windows });
-            if (snapshot.Status == UsageStatus.Ready && (signature != slot.RecordedWindows || snapshot.ReceivedAt - slot.RecordedAt >= TimeSpan.FromMinutes(1)))
-            { history.Record(snapshot); slot.RecordedAt = snapshot.ReceivedAt; slot.RecordedWindows = signature; }
-            if (settings.Notifications) foreach (var notice in history.CheckNotifications(snapshot)) Notice?.Invoke(slot.Provider.Descriptor, notice);
+            try
+            {
+                if (snapshot.Status == UsageStatus.Ready && (signature != slot.RecordedWindows || snapshot.ReceivedAt - slot.RecordedAt >= TimeSpan.FromMinutes(1)))
+                { history.Record(snapshot); slot.RecordedAt = snapshot.ReceivedAt; slot.RecordedWindows = signature; }
+                if (settings.Notifications) foreach (var notice in history.CheckNotifications(snapshot)) Notice?.Invoke(slot.Provider.Descriptor, notice);
+            }
+            catch (Microsoft.Data.Sqlite.SqliteException)
+            {
+                snapshot = snapshot with { Message = "使用枠は更新済みです。履歴データベースへの保存に失敗しました。" };
+            }
             Updated?.Invoke(slot.Provider.Descriptor, snapshot);
             Interlocked.Exchange(ref slot.NextTicks, DateTimeOffset.UtcNow.AddSeconds(slot.Provider.Descriptor.UpdateMode == UpdateMode.Activity ? 2 : RefreshSeconds(slot.Provider.Descriptor, settings.GetRefreshSeconds(slot.Provider.Descriptor.Id))).UtcTicks);
         }
@@ -46,9 +53,14 @@ public sealed class UsageMonitor : IAsyncDisposable
             if (lifetime.IsCancellationRequested) return;
             var rateLimited = error is HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests };
             Interlocked.Exchange(ref slot.NextTicks, DateTimeOffset.UtcNow.AddSeconds(rateLimited ? 300 : RetrySeconds(++slot.Failures)).UtcTicks);
-            var auth = error.Message.Contains("auth", StringComparison.OrdinalIgnoreCase) || error.Message.Contains("login", StringComparison.OrdinalIgnoreCase) || error.Message.Contains("401");
+            var auth = error is UnauthorizedAccessException || error.Message.Contains("auth", StringComparison.OrdinalIgnoreCase) || error.Message.Contains("login", StringComparison.OrdinalIgnoreCase) || error.Message.Contains("401");
             var message = auth ? "ログインが必要です。設定の接続案内をご確認ください。" : error is FileNotFoundException ? "実行ファイルが見つかりません。設定をご確認ください。" : "更新失敗 · 自動で再試行します。接続と設定をご確認ください。";
-            var previous = slot.Last ?? history.Read(slot.Provider.Descriptor.Id, 31).LastOrDefault();
+            var previous = slot.Last;
+            if (previous == null)
+            {
+                try { previous = history.Read(slot.Provider.Descriptor.Id, 31).LastOrDefault(); }
+                catch (Microsoft.Data.Sqlite.SqliteException) { }
+            }
             var status = auth ? UsageStatus.AuthenticationRequired : rateLimited && previous != null ? UsageStatus.Stale : UsageStatus.Error;
             Updated?.Invoke(slot.Provider.Descriptor, (previous ?? new(slot.Provider.Descriptor.Id, "default", DateTimeOffset.MinValue, slot.Provider.Descriptor.Name, UsageStatus.Error, [])) with { Status = status, Message = rateLimited && previous != null ? null : message });
         }

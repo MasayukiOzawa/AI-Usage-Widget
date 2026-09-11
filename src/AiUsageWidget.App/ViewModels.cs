@@ -32,9 +32,10 @@ public sealed class QuotaViewModel(QuotaWindow quota, bool showReset = true)
 }
 public sealed class ProviderViewModel(ProviderDescriptor descriptor) : Observable
 {
+    private readonly IReadOnlyList<CapabilityLocation> baseDetailLocations = CapabilityLocations.For(descriptor.Id);
     public ProviderDescriptor Descriptor { get; } = descriptor;
     public string Name => Descriptor.Name;
-    public IReadOnlyList<CapabilityLocation> DetailLocations { get; } = CapabilityLocations.For(descriptor.Id);
+    public IReadOnlyList<CapabilityLocation> DetailLocations => baseDetailLocations.Concat(Snapshot?.Details ?? []).ToArray();
     public Brush Accent => new SolidColorBrush((Color)ColorConverter.ConvertFromString(Descriptor.Color));
     public ObservableCollection<QuotaViewModel> Quotas { get; } = [];
     public ObservableCollection<QuotaViewModel> AdditionalQuotas { get; } = [];
@@ -64,6 +65,7 @@ public sealed class ProviderViewModel(ProviderDescriptor descriptor) : Observabl
         Change(nameof(Models)); Change(nameof(ModelsLabel)); Change(nameof(ModelsMessage)); Change(nameof(ModelsMessageVisibility));
         Change(nameof(Skills)); Change(nameof(Plugins)); Change(nameof(McpServers)); Change(nameof(SkillsLabel)); Change(nameof(PluginsLabel)); Change(nameof(McpLabel));
         Change(nameof(CapabilitiesMessage)); Change(nameof(CapabilitiesMessageVisibility));
+        Change(nameof(DetailLocations));
         foreach (var q in snapshot.Windows) (q.IsSupplemental ? AdditionalQuotas : Quotas).Add(new(q, Descriptor.Id != "copilot"));
         Change(nameof(Status)); Change(nameof(Detail)); Change(nameof(Updated)); Change(nameof(UpdatedVisibility)); Change(nameof(AdditionalLabel)); Change(nameof(AdditionalVisibility)); Change(nameof(Plan));
     }

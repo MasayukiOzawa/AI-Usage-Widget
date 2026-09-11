@@ -160,10 +160,10 @@ public sealed class ClaudeProvider : IUsageProvider
             var now = DateTimeOffset.UtcNow;
             var plan = oauth.Text("subscriptionType");
             var details = AuthenticationDetails(oauth, now);
-            var accountKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes(oauth.Text("accessToken")!)));
-            var models = await catalog.ReadAsync(accountKey, ModelCatalog.ClaudeAsync, ct);
-            var capabilities = await capabilityCatalog.ReadAsync(accountKey, CapabilityCatalog.ClaudeAsync, ct);
+            var catalogCacheKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(credentialsPath).ToUpperInvariant())));
+            var models = await catalog.ReadAsync(catalogCacheKey, ModelCatalog.ClaudeAsync, ct);
+            var capabilities = await capabilityCatalog.ReadAsync(catalogCacheKey, CapabilityCatalog.ClaudeAsync, ct);
             return windows.Count == 0
                 ? new("claude", "default", now, "Claude Code Usage", UsageStatus.AuthenticationRequired, []) { Plan = plan, Capabilities = capabilities, Details = details }
                 : new("claude", "default", now, "Claude Code Usage", UsageStatus.Ready, windows) { Plan = plan, Models = models, ModelsMessage = catalog.Message, Capabilities = capabilities, Details = details };
@@ -183,6 +183,7 @@ public sealed class ClaudeProvider : IUsageProvider
                 if (HasUsableAccessToken(refreshed)) return refreshed!.Value;
             }
         }
+        catch (FileNotFoundException) { throw; }
         catch (Exception e) when (!ct.IsCancellationRequested)
         {
             if (!HasUsableAccessToken(oauth)) throw new UnauthorizedAccessException("Claude Code login is required.", e);
@@ -199,6 +200,7 @@ public sealed class ClaudeProvider : IUsageProvider
             var refreshed = await TryReadAuthenticationAsync(ct);
             return HasUsableAccessToken(refreshed) ? refreshed!.Value : throw new UnauthorizedAccessException("Claude Code login is required.");
         }
+        catch (FileNotFoundException) { throw; }
         catch (Exception e) when (!ct.IsCancellationRequested)
         { throw new UnauthorizedAccessException("Claude Code login is required.", e); }
     }

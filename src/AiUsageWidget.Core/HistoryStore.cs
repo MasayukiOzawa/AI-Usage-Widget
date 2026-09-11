@@ -33,7 +33,14 @@ public sealed class HistoryStore : IDisposable
                 throw;
             }
         }
-        catch (Exception error) when (error is SqliteException or InvalidDataException)
+        catch (InvalidDataException)
+        {
+            PreserveCorruptDatabase();
+            var replacement = OpenDatabase();
+            try { InitializeSchema(replacement); return replacement; }
+            catch { replacement.Dispose(); throw; }
+        }
+        catch (SqliteException error) when (IsCorruption(error))
         {
             PreserveCorruptDatabase();
             var replacement = OpenDatabase();
@@ -41,6 +48,7 @@ public sealed class HistoryStore : IDisposable
             catch { replacement.Dispose(); throw; }
         }
     }
+    private static bool IsCorruption(SqliteException error) => error.SqliteErrorCode is 11 or 26;
     private SqliteConnection OpenDatabase()
     {
         var result = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath }.ToString());

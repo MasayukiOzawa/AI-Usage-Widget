@@ -198,6 +198,14 @@ public sealed class CoreTests : IDisposable
         var error = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => provider.GetSnapshotAsync(default));
         Assert.Contains("login is required", error.Message);
     }
+    [Fact] public async Task ClaudeProviderPreservesMissingCliErrorWhenExpiredTokenCannotRefresh()
+    {
+        var credentials = Path.Combine(root, "missing-cli-credentials.json"); Directory.CreateDirectory(root);
+        File.WriteAllText(credentials, JsonSerializer.Serialize(new { claudeAiOauth = new { accessToken = "expired", refreshToken = "refresh", scopes = new[] { "user:inference" }, expiresAt = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeMilliseconds() } }));
+        using var http = new HttpClient(new StubHandler(HttpStatusCode.OK, "{}"));
+        await using var provider = new ClaudeProvider(root, http, credentials, findClaudeExecutable: () => null);
+        await Assert.ThrowsAsync<FileNotFoundException>(() => provider.GetSnapshotAsync(default));
+    }
     [Fact] public async Task ClaudeProviderDoesNotRefreshWithExpiredRefreshToken()
     {
         var credentials = Path.Combine(root, "expired-credentials.json"); Directory.CreateDirectory(root);

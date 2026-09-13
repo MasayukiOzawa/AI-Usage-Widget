@@ -108,7 +108,10 @@ public static class ProviderParsers
         if (input.Get("rate_limits") is not { ValueKind: JsonValueKind.Object } limits) return [];
         return limits.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.Object).Select(p => new QuotaWindow(p.Name,
             p.Name switch { "five_hour" => "5時間", "seven_day" => "週間", "seven_day_opus" => "Opus · 週間", "seven_day_sonnet" => "Sonnet · 週間", _ => p.Name },
-            Remaining(p.Value.Number("used_percentage")), p.Value.Unix("resets_at"))).ToArray();
+            Remaining(p.Value.Number("used_percentage")), p.Value.Unix("resets_at"))
+        {
+            IsSupplemental = IsClaudeSupplemental(p.Name)
+        }).ToArray();
     }
     public static IReadOnlyList<QuotaWindow> ClaudeUsage(JsonElement input)
     {
@@ -118,7 +121,10 @@ public static class ProviderParsers
             foreach (var pair in input.EnumerateObject())
             {
                 if (pair.Value.ValueKind != JsonValueKind.Object || pair.Value.Number("utilization") is not { } used) continue;
-                output.Add(new(pair.Name, ClaudeLabel(pair.Name), Remaining(used), IsoDate(pair.Value.Text("resets_at"))));
+                output.Add(new(pair.Name, ClaudeLabel(pair.Name), Remaining(used), IsoDate(pair.Value.Text("resets_at")))
+                {
+                    IsSupplemental = IsClaudeSupplemental(pair.Name)
+                });
             }
             if (input.Get("meters") is { ValueKind: JsonValueKind.Array } meters) AddMeters(meters);
         }
@@ -132,8 +138,13 @@ public static class ProviderParsers
                 if (meter.ValueKind != JsonValueKind.Object || meter.Number("percent") is not { } used) continue;
                 var id = meter.Text("kind") ?? meter.Text("group") ?? $"meter_{output.Count}";
                 var label = ClaudeLabel(id);
-                if (meter.Get("scope")?.Get("model")?.Text("display_name") is { Length: > 0 } model) label = $"{model} · 週間";
-                output.Add(new(id, label, Remaining(used), IsoDate(meter.Text("resets_at"))));
+                var model = meter.Get("scope")?.Get("model")?.Text("display_name");
+                var hasModelScope = !string.IsNullOrWhiteSpace(model);
+                if (hasModelScope) label = $"{model} · 週間";
+                output.Add(new(id, label, Remaining(used), IsoDate(meter.Text("resets_at")))
+                {
+                    IsSupplemental = IsClaudeSupplemental(id) || hasModelScope
+                });
             }
         }
     }
@@ -147,6 +158,7 @@ public static class ProviderParsers
         "extra_usage" => "追加使用枠",
         _ => id
     };
+    private static bool IsClaudeSupplemental(string id) => id is "seven_day_opus" or "seven_day_sonnet" or "weekly_scoped" or "extra_usage";
     private static DateTimeOffset? IsoDate(string? value) => DateTimeOffset.TryParse(value, out var date) ? date : null;
     private static double? Remaining(double? used) => used is { } n ? Math.Clamp(100 - n, 0, 100) : null;
     private static double? NonNegative(double? value) => value is >= 0 ? value : null;

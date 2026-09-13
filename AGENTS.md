@@ -1,10 +1,10 @@
-# Repository instructions
+# リポジトリの作業指示
 
-## Branch workflow
+## ブランチ運用
 
-- Before changing tracked files, confirm that the working tree is clean and update the local `main` branch from `origin/main`.
-- Create a new task branch from the latest `main` before starting implementation. Use the `codex/<short-description>` naming format unless the user specifies another branch name.
-- Do not commit directly to `main`.
-- Keep one logical task per branch. Continue using the existing task branch when resuming the same work.
-- After the branch is merged, return to `main`, update it, and delete the merged local task branch.
-- Read-only investigation that does not change repository files does not require a new branch.
+- 追跡対象ファイルを変更する前に、作業ツリーがクリーンであることを確認し、ローカルの `main` ブランチを `origin/main` の最新状態へ更新する。
+- 実装を開始する前に、最新の `main` から新しい作業用ブランチを作成する。ユーザーから別のブランチ名を指定されていない場合は、`codex/<作業内容を表す短い名前>` の形式を使用する。
+- `main` へ直接コミットしない。
+- 1つのブランチでは、1つの論理的な作業だけを扱う。同じ作業を再開する場合は、既存の作業用ブランチを継続して使用する。
+- ブランチがマージされた後は `main` に戻り、最新状態へ更新してから、マージ済みのローカル作業用ブランチを削除する。
+- リポジトリのファイルを変更しない読み取り専用の調査では、新しいブランチを作成する必要はない。

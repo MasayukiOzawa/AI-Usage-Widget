@@ -43,6 +43,7 @@ public sealed class CoreTests : IDisposable
         Assert.Empty(reopened.CheckNotifications(S(95))); Assert.Single(reopened.CheckNotifications(S(19)));
         Assert.Empty(reopened.CheckNotifications(S(9) with { Status = UsageStatus.Stale }));
         Assert.Single(reopened.CheckNotifications(S(9) with { Windows = [new("q", "Quota", 9, reset.AddDays(1))] }));
+        Assert.Empty(reopened.CheckNotifications(S(9) with { Windows = [new("supplemental", "Supplemental", 9, reset) { IsSupplemental = true }] }));
     }
     [Fact] public void HistoryDeduplicatesAndExcludesErrorsAndStaleSamples()
     {
@@ -81,8 +82,19 @@ public sealed class CoreTests : IDisposable
     }
     [Fact] public void ClaudeDirectUsageParsesMeterSchema()
     {
-        var q = ProviderParsers.ClaudeUsage(Parse("""[{"kind":"session","percent":5},{"kind":"weekly_scoped","percent":16,"scope":{"model":{"display_name":"Fable"}}}]"""));
-        Assert.Equal(95, q[0].RemainingPercent); Assert.Equal("Fable · 週間", q[1].Label);
+        var q = ProviderParsers.ClaudeUsage(Parse("""[{"kind":"session","percent":5},{"kind":"weekly_scoped","percent":16,"scope":{"model":{"display_name":"Fable"}}},{"kind":"custom_weekly","percent":12,"scope":{"model":{"display_name":"Sonnet"}}},{"kind":"extra_usage","percent":4}]"""));
+        Assert.Equal(95, q[0].RemainingPercent);
+        Assert.Equal("Fable · 週間", q[1].Label); Assert.True(q[1].IsSupplemental);
+        Assert.Equal("Sonnet · 週間", q[2].Label); Assert.True(q[2].IsSupplemental);
+        Assert.True(q[3].IsSupplemental);
+    }
+    [Fact] public void ClaudeStatusLineMarksModelWindowsAsSupplemental()
+    {
+        var q = ProviderParsers.Claude(Parse("""{"rate_limits":{"five_hour":{"used_percentage":5},"seven_day":{"used_percentage":10},"seven_day_opus":{"used_percentage":20},"seven_day_sonnet":{"used_percentage":30}}}"""));
+        Assert.False(q.Single(x => x.Id == "five_hour").IsSupplemental);
+        Assert.False(q.Single(x => x.Id == "seven_day").IsSupplemental);
+        Assert.True(q.Single(x => x.Id == "seven_day_opus").IsSupplemental);
+        Assert.True(q.Single(x => x.Id == "seven_day_sonnet").IsSupplemental);
     }
     [Fact] public async Task ClaudeDirectProviderReturnsDisconnectedForEmptyQuota()
     {

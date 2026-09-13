@@ -35,11 +35,10 @@
                     </DockPanel>
                     <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="#9BAAC0" FontSize="10" VerticalAlignment="Center"/>
                   </Grid>
-                  <ItemsControl x:Name="PrimaryQuotaList" ItemsSource="{Binding Quotas}" Margin="0,4,0,0"><ItemsControl.ItemTemplate><DataTemplate><StackPanel Margin="0,0,0,3">
+                  <ItemsControl ItemsSource="{Binding Quotas}" Margin="0,4,0,0"><ItemsControl.ItemTemplate><DataTemplate><StackPanel Margin="0,0,0,3">
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding Label}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Column="1" Text="{Binding Remaining}" FontSize="14" FontWeight="SemiBold" Foreground="{Binding Color}" Margin="6,0,0,0"/></Grid>
                     <TextBlock Visibility="{Binding AmountVisibility}" Text="{Binding Amount}" Foreground="#CBD5E4" FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/><ProgressBar Value="{Binding Used, Mode=OneWay}" Maximum="100" Foreground="{Binding Color}" Margin="0,5,0,5"/><TextBlock Visibility="{Binding ResetVisibility}" Text="{Binding Reset}" Foreground="#99A8BE" FontSize="10" TextWrapping="Wrap"/>
                   </StackPanel></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                  <Expander Header="{Binding AdditionalLabel}" Visibility="{Binding AdditionalVisibility}" FontSize="10" Margin="0,2,0,1"><ItemsControl ItemsSource="{Binding AdditionalQuotas}" ItemTemplate="{Binding ItemTemplate, ElementName=PrimaryQuotaList}" /></Expander>
                   <Expander Header="詳細" FontSize="10" Margin="0,3,0,3">
                     <StackPanel Margin="8,2,0,0">
                   <ItemsControl ItemsSource="{Binding DetailLocations}" Margin="0,2,0,6"><ItemsControl.ItemTemplate><DataTemplate>

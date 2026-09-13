@@ -74,7 +74,7 @@ public partial class MainWindow : Window
             Charts.Children.Add(new TextBlock { Text = p.Name, Foreground = p.Accent, Margin = new(0,10,0,3), FontWeight = FontWeights.SemiBold });
             var snapshots = app.History.Read(p.Descriptor.Id, days, p.Snapshot?.AccountKey);
             var palette = new[] { p.Descriptor.Color, "#D8CF82", "#85BFFF", "#E9A1D4" };
-            var groups = snapshots.SelectMany(s => s.Windows.Where(q => q.RemainingPercent.HasValue && !q.Unlimited
+            var groups = snapshots.SelectMany(s => s.Windows.Where(q => !q.IsSupplemental && q.RemainingPercent.HasValue && !q.Unlimited
                 && !(p.Descriptor.Id == "claude" && (q.Id is "nimbus_quill" or "nimbus_quil")))
                 .Select(q => (Snapshot:s, Quota:q))).GroupBy(x => x.Quota.Id).ToArray();
             var series = groups.Select((g, i) => new ChartSeries(g.Last().Quota.Label, (Color)ColorConverter.ConvertFromString(palette[i % palette.Length]), g.Select(x => new ChartPoint(x.Snapshot.ReceivedAt, x.Quota.RemainingPercent!.Value, x.Quota.ResetsAt)).ToArray())).ToArray();
@@ -83,7 +83,7 @@ public partial class MainWindow : Window
             if (p.Descriptor.Id == "copilot")
             {
                 var creditSeries = snapshots.SelectMany(s => s.Windows
-                    .Where(q => q.Unit == "クレジット" && !q.Unlimited && q.UsedAmount is >= 0)
+                    .Where(q => !q.IsSupplemental && q.Unit == "クレジット" && !q.Unlimited && q.UsedAmount is >= 0)
                     .Select(q => (Snapshot: s, Quota: q)))
                     .GroupBy(x => x.Quota.Id)
                     .Select((g, i) => new ChartSeries(g.Last().Quota.Label,

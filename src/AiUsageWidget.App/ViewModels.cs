@@ -38,9 +38,6 @@ public sealed class ProviderViewModel(ProviderDescriptor descriptor) : Observabl
     public IReadOnlyList<CapabilityLocation> DetailLocations => baseDetailLocations.Concat(Snapshot?.Details ?? []).ToArray();
     public Brush Accent => new SolidColorBrush((Color)ColorConverter.ConvertFromString(Descriptor.Color));
     public ObservableCollection<QuotaViewModel> Quotas { get; } = [];
-    public ObservableCollection<QuotaViewModel> AdditionalQuotas { get; } = [];
-    public string AdditionalLabel => $"その他の枠 ({AdditionalQuotas.Count})";
-    public System.Windows.Visibility AdditionalVisibility => AdditionalQuotas.Count > 0 ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
     public UsageSnapshot? Snapshot { get; private set; }
     public IReadOnlyList<AvailableModel> Models => Snapshot?.Models ?? [];
     public string ModelsLabel => Models.Count > 0 ? $"使用可能なモデル ({Models.Count})" : "使用可能なモデル";
@@ -61,12 +58,12 @@ public sealed class ProviderViewModel(ProviderDescriptor descriptor) : Observabl
     public System.Windows.Visibility UpdatedVisibility => Updated.Length > 0 ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
     public void Apply(UsageSnapshot snapshot)
     {
-        Snapshot = snapshot; Quotas.Clear(); AdditionalQuotas.Clear();
+        Snapshot = snapshot; Quotas.Clear();
         Change(nameof(Models)); Change(nameof(ModelsLabel)); Change(nameof(ModelsMessage)); Change(nameof(ModelsMessageVisibility));
         Change(nameof(Skills)); Change(nameof(Plugins)); Change(nameof(McpServers)); Change(nameof(SkillsLabel)); Change(nameof(PluginsLabel)); Change(nameof(McpLabel));
         Change(nameof(CapabilitiesMessage)); Change(nameof(CapabilitiesMessageVisibility));
         Change(nameof(DetailLocations));
-        foreach (var q in snapshot.Windows) (q.IsSupplemental ? AdditionalQuotas : Quotas).Add(new(q, Descriptor.Id != "copilot"));
-        Change(nameof(Status)); Change(nameof(Detail)); Change(nameof(Updated)); Change(nameof(UpdatedVisibility)); Change(nameof(AdditionalLabel)); Change(nameof(AdditionalVisibility)); Change(nameof(Plan));
+        foreach (var q in snapshot.Windows.Where(q => !q.IsSupplemental)) Quotas.Add(new(q, Descriptor.Id != "copilot"));
+        Change(nameof(Status)); Change(nameof(Detail)); Change(nameof(Updated)); Change(nameof(UpdatedVisibility)); Change(nameof(Plan));
     }
 }

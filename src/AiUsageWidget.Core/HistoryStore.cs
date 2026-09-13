@@ -139,7 +139,7 @@ public sealed class HistoryStore : IDisposable
         lock (sync)
         {
             using var tx = connection.BeginTransaction(); var result = new List<QuotaNotice>();
-            foreach (var q in s.Windows.Where(q => !q.Unlimited && q.RemainingPercent.HasValue && (q.ResetsAt == null || q.ResetsAt > DateTimeOffset.UtcNow)))
+            foreach (var q in s.Windows.Where(q => !q.IsSupplemental && !q.Unlimited && q.RemainingPercent.HasValue && (q.ResetsAt == null || q.ResetsAt > DateTimeOffset.UtcNow)))
             {
                 var period = q.ResetsAt?.ToUnixTimeSeconds().ToString() ?? "unknown"; var mask = 0;
                 using (var read = connection.CreateCommand())

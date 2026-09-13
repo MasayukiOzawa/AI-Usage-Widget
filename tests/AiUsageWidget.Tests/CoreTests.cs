@@ -43,6 +43,7 @@ public sealed class CoreTests : IDisposable
         Assert.Empty(reopened.CheckNotifications(S(95))); Assert.Single(reopened.CheckNotifications(S(19)));
         Assert.Empty(reopened.CheckNotifications(S(9) with { Status = UsageStatus.Stale }));
         Assert.Single(reopened.CheckNotifications(S(9) with { Windows = [new("q", "Quota", 9, reset.AddDays(1))] }));
+        Assert.Empty(reopened.CheckNotifications(S(9) with { Windows = [new("supplemental", "Supplemental", 9, reset) { IsSupplemental = true }] }));
     }
     [Fact] public void HistoryDeduplicatesAndExcludesErrorsAndStaleSamples()
     {

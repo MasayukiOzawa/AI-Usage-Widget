@@ -19,7 +19,7 @@ public partial class MainWindow : Window
     public MainWindow(WidgetApp app)
     {
         this.app = app; Providers = new(app.Descriptors.Select(d => new ProviderViewModel(d)));
-        InitializeComponent(); DataContext = Providers; Topmost = app.Settings.AlwaysOnTop;
+        InitializeComponent(); DataContext = Providers; SetPinned(app.Settings.AlwaysOnTop, false);
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "AiUsageWidget.ico");
         if (System.IO.File.Exists(iconPath)) Icon = BitmapFrame.Create(new Uri(iconPath, UriKind.Absolute));
         var area = SystemParameters.WorkArea; Height = Math.Min(700, area.Height - 40);
@@ -59,6 +59,17 @@ public partial class MainWindow : Window
         catch (InvalidOperationException) { }
     }
     private void RefreshClick(object sender, RoutedEventArgs e) => app.Monitor.Refresh();
+    private void PinClick(object sender, RoutedEventArgs e) => SetPinned(!Topmost);
+    public void SetPinned(bool pinned, bool save = true)
+    {
+        Topmost = pinned;
+        app.Settings.AlwaysOnTop = pinned;
+        PinButton.Background = pinned ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#354257")) : Brushes.Transparent;
+        PinGlyph.Foreground = pinned ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6CE6C0")) : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#CBD5E4"));
+        PinButton.ToolTip = pinned ? "最前面表示を解除" : "最前面に固定";
+        System.Windows.Automation.AutomationProperties.SetName(PinButton, pinned ? "最前面表示を解除" : "最前面に固定");
+        if (save) try { app.Settings.Save(app.Root); } catch (System.IO.IOException) { }
+    }
     private void HideClick(object sender, RoutedEventArgs e) { SavePosition(); Hide(); }
     private void SettingsClick(object sender, RoutedEventArgs e) => new SettingsWindow(app) { Owner = this }.ShowDialog();
     private void HistoryExpanded(object sender, RoutedEventArgs e) => RefreshCharts();

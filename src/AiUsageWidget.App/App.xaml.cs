@@ -91,7 +91,7 @@ public partial class WidgetApp : Application
     private void DisplaysChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(() => widget?.KeepOnScreen());
     public void ApplySettings()
     {
-        Settings.Save(Root); if (widget != null) widget.Topmost = Settings.AlwaysOnTop;
+        Settings.Save(Root); if (widget != null) widget.SetPinned(Settings.AlwaysOnTop, false);
         using var run = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
         if (Settings.AutoStart) run.SetValue("AiUsageWidget", $"\"{Environment.ProcessPath}\""); else run.DeleteValue("AiUsageWidget", false);
         Monitor.Refresh();

@@ -251,6 +251,12 @@ public sealed class CoreTests : IDisposable
         Assert.Equal(90, settings.CodexRefreshSeconds); Assert.Equal(90, settings.CopilotRefreshSeconds); Assert.Equal(300, settings.ClaudeRefreshSeconds);
         Assert.Equal(90, settings.GetRefreshSeconds("codex")); Assert.Equal(300, settings.GetRefreshSeconds("claude"));
     }
+    [Fact] public void AlwaysOnTopDefaultsOffAndPersists()
+    {
+        Assert.False(new WidgetSettings().AlwaysOnTop);
+        var settings = new WidgetSettings { AlwaysOnTop = true }; settings.Save(root);
+        Assert.True(WidgetSettings.Load(root).AlwaysOnTop);
+    }
     [Fact] public async Task OneProviderFailureDoesNotBlockAnother()
     {
         using var db = new HistoryStore(root); var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

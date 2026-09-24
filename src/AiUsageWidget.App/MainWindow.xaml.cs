@@ -86,6 +86,7 @@ public partial class MainWindow : Window
         var restored = WindowState == WindowState.Maximized;
         MaximizeButton.Content = restored ? "\uE923" : "\uE922";
         MaximizeButton.ToolTip = restored ? "元に戻す" : "最大化";
+        System.Windows.Automation.AutomationProperties.SetName(MaximizeButton, restored ? "元に戻す" : "最大化");
     }
     private void PinClick(object sender, RoutedEventArgs e) => SetPinned(!Topmost);
     public void SetPinned(bool pinned, bool save = true)

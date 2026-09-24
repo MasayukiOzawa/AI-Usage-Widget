@@ -86,7 +86,11 @@ public partial class WidgetApp : Application
         tray = new Forms.NotifyIcon { Icon = trayIcon ?? System.Drawing.SystemIcons.Information, Text = "AI Usage Widget", ContextMenuStrip = menu, Visible = true };
         tray.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) ShowWidget(); };
     }
-    private void ShowWidget() { widget!.KeepOnScreen(); widget.Show(); widget.Activate(); }
+    private void ShowWidget()
+    {
+        if (widget!.WindowState == WindowState.Minimized) widget.WindowState = WindowState.Normal;
+        widget.KeepOnScreen(); widget.Show(); widget.Activate();
+    }
     private void PowerChanged(object sender, PowerModeChangedEventArgs e) { if (e.Mode == PowerModes.Resume) Monitor.Refresh(); }
     private void DisplaysChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(() => widget?.KeepOnScreen());
     public void ApplySettings()

@@ -26,13 +26,30 @@ public partial class MainWindow : Window
         Left = app.Settings.Left ?? area.Right - Width - 24; Top = app.Settings.Top ?? area.Top + 30;
         KeepOnScreen(); Closing += (_, e) => { if (!app.IsExiting) { e.Cancel = true; Hide(); SavePosition(); } };
         LocationChanged += (_, _) => { if (IsLoaded) SavePosition(); };
+        StateChanged += (_, _) => UpdateMaximizeButton();
         SourceInitialized += (_, _) =>
         {
             var dark = 1;
-            DwmSetWindowAttribute(new WindowInteropHelper(this).Handle, 20, ref dark, sizeof(int));
+            var handle = new WindowInteropHelper(this).Handle;
+            DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
+            HwndSource.FromHwnd(handle)?.AddHook(WindowProc);
         };
     }
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+    private const int WmNcHitTest = 0x0084;
+    private const int HtMaxButton = 9;
+    private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (message != WmNcHitTest || !IsLoaded || MaximizeButton.ActualWidth <= 0) return IntPtr.Zero;
+        var packed = lParam.ToInt64();
+        var cursor = new Point(unchecked((short)(packed & 0xffff)), unchecked((short)((packed >> 16) & 0xffff)));
+        var topLeft = MaximizeButton.PointToScreen(new Point());
+        var dpi = VisualTreeHelper.GetDpi(MaximizeButton);
+        var bounds = new Rect(topLeft, new Size(MaximizeButton.ActualWidth * dpi.DpiScaleX, MaximizeButton.ActualHeight * dpi.DpiScaleY));
+        if (!bounds.Contains(cursor)) return IntPtr.Zero;
+        handled = true;
+        return new IntPtr(HtMaxButton);
+    }
     public void KeepOnScreen()
     {
         if (WindowState != WindowState.Normal) return;
@@ -59,6 +76,17 @@ public partial class MainWindow : Window
         catch (InvalidOperationException) { }
     }
     private void RefreshClick(object sender, RoutedEventArgs e) => app.Monitor.Refresh();
+    private void MinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void MaximizeClick(object sender, RoutedEventArgs e) => ToggleMaximize();
+    private void CloseClick(object sender, RoutedEventArgs e) => Close();
+    private void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void UpdateMaximizeButton()
+    {
+        if (MaximizeButton == null) return;
+        var restored = WindowState == WindowState.Maximized;
+        MaximizeButton.Content = restored ? "\uE923" : "\uE922";
+        MaximizeButton.ToolTip = restored ? "元に戻す" : "最大化";
+    }
     private void PinClick(object sender, RoutedEventArgs e) => SetPinned(!Topmost);
     public void SetPinned(bool pinned, bool save = true)
     {

@@ -86,12 +86,16 @@ public partial class WidgetApp : Application
         tray = new Forms.NotifyIcon { Icon = trayIcon ?? System.Drawing.SystemIcons.Information, Text = "AI Usage Widget", ContextMenuStrip = menu, Visible = true };
         tray.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) ShowWidget(); };
     }
-    private void ShowWidget() { widget!.KeepOnScreen(); widget.Show(); widget.Activate(); }
+    private void ShowWidget()
+    {
+        if (widget!.WindowState == WindowState.Minimized) widget.WindowState = WindowState.Normal;
+        widget.KeepOnScreen(); widget.Show(); widget.Activate();
+    }
     private void PowerChanged(object sender, PowerModeChangedEventArgs e) { if (e.Mode == PowerModes.Resume) Monitor.Refresh(); }
     private void DisplaysChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(() => widget?.KeepOnScreen());
     public void ApplySettings()
     {
-        Settings.Save(Root); if (widget != null) widget.Topmost = Settings.AlwaysOnTop;
+        Settings.Save(Root); if (widget != null) widget.SetPinned(Settings.AlwaysOnTop, false);
         using var run = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
         if (Settings.AutoStart) run.SetValue("AiUsageWidget", $"\"{Environment.ProcessPath}\""); else run.DeleteValue("AiUsageWidget", false);
         Monitor.Refresh();

@@ -1,8 +1,6 @@
 using System;
 using System.Windows;
-
 namespace AiUsageWidget.App;
-
 public sealed class GpuViewModel
 {
     public string Label { get; }
@@ -10,34 +8,19 @@ public sealed class GpuViewModel
     public string Usage { get; }
     public double Used { get; }
     public Visibility UsageBarVisibility { get; }
-    public string MemoryUsage { get; }
-    public double MemoryUsed { get; }
-    public Visibility MemoryBarVisibility { get; }
-    public string MemoryAmount { get; }
-    public Visibility MemoryAmountVisibility => string.IsNullOrEmpty(MemoryAmount) ? Visibility.Collapsed : Visibility.Visible;
-    public Visibility MemoryKindVisibility => string.IsNullOrEmpty(MemoryKind) ? Visibility.Collapsed : Visibility.Visible;
-    public string MemoryKind { get; }
+    public string DedicatedAmount { get; }
     public string SharedAmount { get; }
-    public Visibility SharedVisibility { get; }
+    public Visibility DedicatedVisibility => DedicatedAmount.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility SharedVisibility => SharedAmount.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
     public GpuViewModel(int index, GpuSnapshot snapshot)
     {
         Label = $"GPU {index}"; Name = snapshot.Name;
         Usage = snapshot.UtilizationPercent is { } percent ? $"{percent:0}%" : "";
         Used = snapshot.UtilizationPercent ?? 0;
         UsageBarVisibility = snapshot.UtilizationPercent.HasValue ? Visibility.Visible : Visibility.Collapsed;
-        var total = snapshot.DedicatedTotalBytes;
-        var used = snapshot.DedicatedUsedBytes;
-        var dedicated = total is > 0;
-        var memoryPercent = dedicated && used.HasValue ? Math.Clamp(100d * used.Value / total!.Value, 0, 100) : (double?)null;
-        MemoryUsage = memoryPercent is { } value ? $"{value:0}%" : "";
-        MemoryUsed = memoryPercent ?? 0;
-        MemoryBarVisibility = memoryPercent.HasValue ? Visibility.Visible : Visibility.Collapsed;
-        MemoryAmount = dedicated
-            ? used.HasValue ? $"{Gb(used.Value)} / {Gb(total!.Value)} GB" : ""
-            : snapshot.SharedUsedBytes is { } shared ? $"共有 {Gb(shared)} GB" : "";
-        MemoryKind = dedicated && used.HasValue ? "専用" : "";
-        SharedAmount = dedicated && snapshot.SharedUsedBytes is { } bytes ? $"共有 {Gb(bytes)} GB" : "";
-        SharedVisibility = dedicated && snapshot.SharedUsedBytes is > 0 ? Visibility.Visible : Visibility.Collapsed;
+        DedicatedAmount = Amount(snapshot.DedicatedUsedBytes, snapshot.DedicatedTotalBytes);
+        SharedAmount = Amount(snapshot.SharedUsedBytes, snapshot.SharedTotalBytes);
     }
-    private static string Gb(ulong bytes) => (bytes / 1073741824d).ToString("0.0");
+    private static string Amount(ulong? used, ulong? total) => used.HasValue && total is > 0
+        ? $"{used.Value / 1073741824d:0.0} / {total.Value / 1073741824d:0.0} GB" : "";
 }

@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace AiUsageWidget.App;
 
 public sealed record GpuSnapshot(string Id, string Name, double? UtilizationPercent,
-    ulong? DedicatedUsedBytes, ulong? DedicatedTotalBytes, ulong? SharedUsedBytes);
+    ulong? DedicatedUsedBytes, ulong? DedicatedTotalBytes, ulong? SharedUsedBytes, ulong? SharedTotalBytes = null);
 
 // Read on a worker thread: driver enumeration and PDH can take time. LUIDs remain
 // stable for the current Windows session, independently of adapter display order.
@@ -39,7 +39,7 @@ public sealed class GpuUsageReader : IDisposable
             sampled = collected;
             return adapters.Select(a => new GpuSnapshot(a.Id, a.Name,
                 CalculateUtilization(a.Id, engineValues), Memory(a.Id, dedicatedValues), a.Total,
-                Memory(a.Id, sharedValues))).ToArray();
+                Memory(a.Id, sharedValues), a.SharedTotal)).ToArray();
         }
     }
     public void Reset() { lock (gate) { sampled = false; } }
@@ -110,7 +110,7 @@ public sealed class GpuUsageReader : IDisposable
         finally { Marshal.FreeHGlobal(buffer); }
         return values;
     }
-    private sealed record Adapter(string Id, string Name, ulong Total);
+    private sealed record Adapter(string Id, string Name, ulong Total, ulong SharedTotal);
     private static List<Adapter> EnumerateAdapters()
     {
         var result = new List<Adapter>();
@@ -125,7 +125,7 @@ public sealed class GpuUsageReader : IDisposable
                 try
                 {
                     if (Method<GetDesc>(adapter, 10)(adapter, out var desc) >= 0 && (desc.Flags & 2) == 0)
-                        result.Add(new($"luid_0x{desc.High:x8}_0x{desc.Low:x8}", desc.Description.Trim(), desc.DedicatedVideo.ToUInt64()));
+                        result.Add(new($"luid_0x{desc.High:x8}_0x{desc.Low:x8}", desc.Description.Trim(), desc.DedicatedVideo.ToUInt64(), desc.SharedSystem.ToUInt64()));
                 }
                 finally { Marshal.Release(adapter); }
             }

@@ -14,6 +14,12 @@ public static class AppPaths
 }
 public sealed class WidgetSettings
 {
+    private int systemUsageRefreshSeconds = 10;
+    public int SystemUsageRefreshSeconds
+    {
+        get => systemUsageRefreshSeconds;
+        set => systemUsageRefreshSeconds = Math.Clamp(value, 1, 60);
+    }
     public int CodexRefreshSeconds { get; set; } = 60;
     public int CopilotRefreshSeconds { get; set; } = 60;
     public int ClaudeRefreshSeconds { get; set; } = 300;

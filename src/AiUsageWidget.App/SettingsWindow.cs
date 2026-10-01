@@ -18,6 +18,7 @@ public sealed class SettingsWindow : Window
         var notice = new CheckBox { Content = "残り 20%・10% で通知", IsChecked = app.Settings.Notifications };
         var startup = new CheckBox { Content = "Windows ログイン時に起動", IsChecked = app.Settings.AutoStart };
         body.Children.Add(top); body.Children.Add(dock); body.Children.Add(notice); body.Children.Add(startup);
+        Label("CPU・メモリ・GPU 更新間隔（秒・1～60）"); var systemUsageInterval = new TextBox { Text = app.Settings.SystemUsageRefreshSeconds.ToString() }; body.Children.Add(systemUsageInterval);
         Label("Codex 更新間隔（秒・15～3600）"); var codexInterval = new TextBox { Text = app.Settings.CodexRefreshSeconds.ToString() }; body.Children.Add(codexInterval);
         Label("GitHub Copilot 更新間隔（秒・15～3600）"); var copilotInterval = new TextBox { Text = app.Settings.CopilotRefreshSeconds.ToString() }; body.Children.Add(copilotInterval);
         Label("Claude Code 更新間隔（秒・300～3600）"); var claudeInterval = new TextBox { Text = app.Settings.ClaudeRefreshSeconds.ToString() }; body.Children.Add(claudeInterval);
@@ -30,6 +31,8 @@ public sealed class SettingsWindow : Window
         var save = new Button { Content = "保存する", Margin = new(0,18,0,0) }; body.Children.Add(save);
         save.Click += (_, _) =>
         {
+            if (!int.TryParse(systemUsageInterval.Text, out var systemUsageSeconds) || systemUsageSeconds < 1 || systemUsageSeconds > 60)
+            { MessageBox.Show(this, "CPU・メモリ・GPUの更新間隔は1～60秒で指定してください。"); return; }
             if (!int.TryParse(codexInterval.Text, out var codexSeconds) || codexSeconds < 15 || codexSeconds > 3600 ||
                 !int.TryParse(copilotInterval.Text, out var copilotSeconds) || copilotSeconds < 15 || copilotSeconds > 3600)
             { MessageBox.Show(this, "CodexとGitHub Copilotの更新間隔は15～3600秒で指定してください。"); return; }
@@ -37,6 +40,7 @@ public sealed class SettingsWindow : Window
             { MessageBox.Show(this, "Claude Codeの更新間隔は300～3600秒で指定してください。"); return; }
             foreach (var path in new[] { codex.Text, copilot.Text }) if (!string.IsNullOrWhiteSpace(path) && !System.IO.File.Exists(path)) { MessageBox.Show(this, "指定された実行ファイルが見つかりません。"); return; }
             app.Settings.CodexRefreshSeconds = codexSeconds; app.Settings.CopilotRefreshSeconds = copilotSeconds; app.Settings.ClaudeRefreshSeconds = claudeSeconds;
+            app.Settings.SystemUsageRefreshSeconds = systemUsageSeconds;
             app.Settings.AlwaysOnTop = top.IsChecked == true; app.Settings.Notifications = notice.IsChecked == true; app.Settings.AutoStart = startup.IsChecked == true;
             app.Settings.DockToDesktop = dock.IsChecked == true;
             app.Settings.CodexPath = codex.Text.Trim(); app.Settings.CopilotPath = copilot.Text.Trim();

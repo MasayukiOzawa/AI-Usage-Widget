@@ -15,6 +15,9 @@ public partial class MainWindow : Window
     private readonly WidgetApp app;
     private int days = 30;
     private DateTimeOffset lastChartRender;
+    private DesktopDock? desktopDock;
+    private Rect floatingBounds;
+    private bool docked;
     public ObservableCollection<ProviderViewModel> Providers { get; }
     public MainWindow(WidgetApp app)
     {
@@ -26,13 +29,17 @@ public partial class MainWindow : Window
         Left = app.Settings.Left ?? area.Right - Width - 24; Top = app.Settings.Top ?? area.Top + 30;
         KeepOnScreen(); Closing += (_, e) => { if (!app.IsExiting) { e.Cancel = true; Hide(); SavePosition(); } };
         LocationChanged += (_, _) => { if (IsLoaded) SavePosition(); };
-        StateChanged += (_, _) => UpdateMaximizeButton();
+        StateChanged += (_, _) => { UpdateMaximizeButton(); desktopDock?.Refresh(); };
+        IsVisibleChanged += (_, _) => desktopDock?.Refresh();
+        Closed += (_, _) => desktopDock?.Dispose();
         SourceInitialized += (_, _) =>
         {
             var dark = 1;
             var handle = new WindowInteropHelper(this).Handle;
             DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
             HwndSource.FromHwnd(handle)?.AddHook(WindowProc);
+            desktopDock = new DesktopDock(this);
+            SetDesktopDock(app.Settings.DockToDesktop);
         };
     }
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
@@ -40,7 +47,9 @@ public partial class MainWindow : Window
     private const int HtMaxButton = 9;
     private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (message != WmNcHitTest || !IsLoaded || MaximizeButton.ActualWidth <= 0) return IntPtr.Zero;
+        if (docked && message == 0x0112 && ((wParam.ToInt64() & 0xfff0) is 0xf010 or 0xf000 or 0xf030))
+        { handled = true; return IntPtr.Zero; } // disable moving, resizing and maximizing while docked
+        if (docked || message != WmNcHitTest || !IsLoaded || MaximizeButton.ActualWidth <= 0) return IntPtr.Zero;
         var packed = lParam.ToInt64();
         var cursor = new Point(unchecked((short)(packed & 0xffff)), unchecked((short)((packed >> 16) & 0xffff)));
         var topLeft = MaximizeButton.PointToScreen(new Point());
@@ -52,6 +61,7 @@ public partial class MainWindow : Window
     }
     public void KeepOnScreen()
     {
+        if (docked) { desktopDock?.Refresh(); return; }
         if (WindowState != WindowState.Normal) return;
         // Virtual desktop bounds preserve placement on secondary monitors; require a real monitor intersection.
         var dpi = VisualTreeHelper.GetDpi(this); var x = (int)(Left * dpi.DpiScaleX); var y = (int)(Top * dpi.DpiScaleY);
@@ -62,7 +72,28 @@ public partial class MainWindow : Window
         if (double.IsNaN(Left) || double.IsInfinity(Left)) Left = 24;
         if (double.IsNaN(Top) || double.IsInfinity(Top)) Top = 24;
     }
-    private void SavePosition() { if (WindowState != WindowState.Normal) return; app.Settings.Left = Left; app.Settings.Top = Top; try { app.Settings.Save(app.Root); } catch (System.IO.IOException) { } }
+    private void SavePosition() { if (docked || WindowState != WindowState.Normal) return; app.Settings.Left = Left; app.Settings.Top = Top; try { app.Settings.Save(app.Root); } catch (System.IO.IOException) { } }
+    public void SetDesktopDock(bool enabled)
+    {
+        DesktopDockItem.IsChecked = enabled;
+        DesktopDockItem.Header = enabled ? "デスクトップの端への固定を解除" : "デスクトップの端に表示";
+        if (desktopDock == null || docked == enabled) return;
+        if (enabled)
+        {
+            floatingBounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+            WindowState = WindowState.Normal;
+            docked = true; ResizeMode = ResizeMode.NoResize; MaximizeButton.IsEnabled = false;
+            desktopDock.SetEnabled(true);
+        }
+        else
+        {
+            desktopDock.SetEnabled(false); docked = false;
+            ResizeMode = ResizeMode.CanResize; MaximizeButton.IsEnabled = true;
+            Left = floatingBounds.Left; Top = floatingBounds.Top; Width = floatingBounds.Width; Height = floatingBounds.Height;
+            KeepOnScreen(); SavePosition();
+        }
+    }
+    public void ReleaseDesktopDock() => desktopDock?.Dispose();
     public void Apply(ProviderDescriptor descriptor, UsageSnapshot snapshot)
     {
         Providers.First(p => p.Descriptor.Id == descriptor.Id).Apply(snapshot);
@@ -70,16 +101,28 @@ public partial class MainWindow : Window
     }
     private void DragHeader(object sender, MouseButtonEventArgs e)
     {
+        if (docked) return;
         if (e.ChangedButton != MouseButton.Left || e.ButtonState != MouseButtonState.Pressed) return;
         e.Handled = true;
         try { DragMove(); SavePosition(); }
         catch (InvalidOperationException) { }
     }
     private void RefreshClick(object sender, RoutedEventArgs e) => app.Monitor.Refresh();
+    private void DesktopMenuClick(object sender, RoutedEventArgs e)
+    {
+        DesktopMenuButton.ContextMenu.PlacementTarget = DesktopMenuButton;
+        DesktopMenuButton.ContextMenu.IsOpen = true;
+    }
+    private void DesktopDockClick(object sender, RoutedEventArgs e)
+    {
+        app.Settings.DockToDesktop = !docked;
+        SetDesktopDock(app.Settings.DockToDesktop);
+        app.Settings.Save(app.Root);
+    }
     private void MinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void MaximizeClick(object sender, RoutedEventArgs e) => ToggleMaximize();
     private void CloseClick(object sender, RoutedEventArgs e) => Close();
-    private void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void ToggleMaximize() { if (!docked) WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized; }
     private void UpdateMaximizeButton()
     {
         if (MaximizeButton == null) return;

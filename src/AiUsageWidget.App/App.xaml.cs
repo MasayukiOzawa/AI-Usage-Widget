@@ -95,7 +95,8 @@ public partial class WidgetApp : Application
     private void DisplaysChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(() => widget?.KeepOnScreen());
     public void ApplySettings()
     {
-        Settings.Save(Root); if (widget != null) widget.SetPinned(Settings.AlwaysOnTop, false);
+        Settings.Save(Root);
+        if (widget != null) { widget.SetPinned(Settings.AlwaysOnTop, false); widget.SetDesktopDock(Settings.DockToDesktop); }
         using var run = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
         if (Settings.AutoStart) run.SetValue("AiUsageWidget", $"\"{Environment.ProcessPath}\""); else run.DeleteValue("AiUsageWidget", false);
         Monitor.Refresh();
@@ -103,6 +104,7 @@ public partial class WidgetApp : Application
     public async Task ExitAsync()
     {
         if (IsExiting) return; IsExiting = true;
+        widget?.ReleaseDesktopDock();
         SystemEvents.PowerModeChanged -= PowerChanged; SystemEvents.DisplaySettingsChanged -= DisplaysChanged;
         tray?.Dispose(); trayIcon?.Dispose(); trayIcon = null; if (Monitor != null) await Monitor.DisposeAsync(); History?.Dispose();
         widget?.Close(); Shutdown();

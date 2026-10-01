@@ -19,12 +19,16 @@
     </DataTemplate>
   </Window.Resources>
   <Grid>
-  <StackPanel Orientation="Horizontal" Height="32" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8,0,0,0" Panel.ZIndex="10">
+  <Grid Height="32" VerticalAlignment="Top" Margin="8,0,218,0" Panel.ZIndex="10">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
     <Image Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" Source="{Binding Icon, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"/>
-    <TextBlock VerticalAlignment="Center" FontSize="12" Foreground="#CBD5E4" Text="{Binding Title, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"/>
-  </StackPanel>
+    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" Foreground="#CBD5E4" TextTrimming="CharacterEllipsis" Text="{Binding Title, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"/>
+  </Grid>
+  <Button x:Name="DesktopMenuButton" Style="{StaticResource CaptionButton}" Width="40" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,0,178,0" Content="&#xE712;" ToolTip="その他" AutomationProperties.Name="その他" Click="DesktopMenuClick" shell:WindowChrome.IsHitTestVisibleInChrome="True" Panel.ZIndex="10">
+    <Button.ContextMenu><ContextMenu><MenuItem x:Name="DesktopDockItem" Header="デスクトップの端に表示" IsCheckable="True" Click="DesktopDockClick"/></ContextMenu></Button.ContextMenu>
+  </Button>
   <Button x:Name="PinButton" Style="{StaticResource CaptionButton}" Width="40" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,0,138,0" ToolTip="最前面に固定" Click="PinClick" shell:WindowChrome.IsHitTestVisibleInChrome="True" Panel.ZIndex="10">
-    <TextBlock x:Name="PinGlyph" Text="&#xE718;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Foreground="#CBD5E4"/>
+    <Path x:Name="PinGlyph" Width="16" Height="16" Data="M5,1 L11,1 L10,3 L10,7 L12,9 L12,10 L9,10 L8,15 L7,10 L4,10 L4,9 L6,7 L6,3 Z" Stroke="#CBD5E4" StrokeThickness="1" Fill="Transparent" RenderTransformOrigin="0.5,0.5"/>
   </Button>
   <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Panel.ZIndex="10">
     <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" ToolTip="最小化" AutomationProperties.Name="最小化" Click="MinimizeClick" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><IsTestProject>true</IsTestProject><IsPackable>false</IsPackable><ImplicitUsings>disable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0"><PrivateAssets>all</PrivateAssets></PackageReference>
+    <Compile Include="../../src/AiUsageWidget.App/DesktopDock.cs" Link="DesktopDock.cs" />
+  </ItemGroup>
+</Project>

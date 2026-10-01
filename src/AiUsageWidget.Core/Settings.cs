@@ -18,6 +18,7 @@ public sealed class WidgetSettings
     public int CopilotRefreshSeconds { get; set; } = 60;
     public int ClaudeRefreshSeconds { get; set; } = 300;
     public bool AlwaysOnTop { get; set; }
+    public bool DockToDesktop { get; set; }
     public bool Notifications { get; set; } = true;
     public bool AutoStart { get; set; }
     public double? Left { get; set; }
@@ -47,6 +48,17 @@ public sealed class WidgetSettings
         catch (Exception e) when (e is IOException or JsonException) { return new(); }
     }
     public void Save(string root) => AppPaths.WriteAtomic(Path.Combine(root, "settings.json"), JsonSerializer.Serialize(this, Json.Options));
+    public void ApplyDockAndSave(string root, bool previousDock, Action<bool> applyDock)
+    {
+        try { applyDock(DockToDesktop); Save(root); }
+        catch
+        {
+            DockToDesktop = previousDock;
+            try { applyDock(previousDock); }
+            catch (InvalidOperationException) { applyDock(false); DockToDesktop = false; }
+            throw;
+        }
+    }
 }
 public static class Executables
 {

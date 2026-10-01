@@ -47,7 +47,7 @@ public partial class WidgetApp : Application
             if (e.Args.Contains("--demo")) ApplyDemo(); else Monitor.Start();
             if (Value(e.Args, "--capture") is { } capture)
             {
-                await Task.Delay(e.Args.Contains("--demo") ? 700 : 10000);
+                await Task.Delay(e.Args.Contains("--demo") ? Settings.SystemUsageRefreshSeconds * 1000 + 700 : 10000);
                 widget.UpdateLayout(); var bitmap = new RenderTargetBitmap((int)widget.ActualWidth, (int)widget.ActualHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(widget);
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(capture))!);
                 using (var stream = File.Create(capture)) { var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap)); png.Save(stream); }
@@ -101,6 +101,7 @@ public partial class WidgetApp : Application
             widget?.SetDesktopDock(enabled);
         });
         widget?.SetPinned(Settings.AlwaysOnTop, false);
+        widget?.ApplySystemUsageInterval();
         using var run = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
         if (Settings.AutoStart) run.SetValue("AiUsageWidget", $"\"{Environment.ProcessPath}\""); else run.DeleteValue("AiUsageWidget", false);
         Monitor.Refresh();

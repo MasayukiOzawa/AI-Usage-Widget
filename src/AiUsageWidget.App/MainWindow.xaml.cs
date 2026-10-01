@@ -13,6 +13,12 @@ namespace AiUsageWidget.App;
 public partial class MainWindow : Window
 {
     private readonly WidgetApp app;
+    private readonly SystemUsage systemUsage = new();
+    private readonly System.Windows.Threading.DispatcherTimer systemUsageTimer = new() { Interval = TimeSpan.FromSeconds(10) };
+    private readonly GpuUsageReader gpuReader = new();
+    private bool gpuReading;
+    private bool gpuResetPending = true;
+    private bool hardwareClosed;
     private int days = 30;
     private DateTimeOffset lastChartRender;
     private DesktopDock? desktopDock;
@@ -24,6 +30,12 @@ public partial class MainWindow : Window
     {
         this.app = app; Providers = new(app.Descriptors.Select(d => new ProviderViewModel(d)));
         InitializeComponent(); DataContext = Providers; SetPinned(app.Settings.AlwaysOnTop, false);
+        SystemUsagePanel.DataContext = systemUsage;
+        systemUsageTimer.Interval = TimeSpan.FromSeconds(app.Settings.SystemUsageRefreshSeconds);
+        systemUsageTimer.Tick += async (_, _) => { systemUsage.Update(); await UpdateGpuAsync(); };
+        IsVisibleChanged += (_, _) => UpdateSystemUsageMonitoring();
+        StateChanged += (_, _) => UpdateSystemUsageMonitoring();
+        Closed += (_, _) => { hardwareClosed = true; systemUsageTimer.Stop(); if (!gpuReading) gpuReader.Dispose(); };
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "AiUsageWidget.ico");
         if (System.IO.File.Exists(iconPath)) Icon = BitmapFrame.Create(new Uri(iconPath, UriKind.Absolute));
         var area = SystemParameters.WorkArea; Height = Math.Min(700, area.Height - 40);
@@ -44,6 +56,39 @@ public partial class MainWindow : Window
             try { SetDesktopDock(app.Settings.DockToDesktop); }
             catch (InvalidOperationException error) { ReportDockFailure(error.Message); }
         };
+    }
+    private void UpdateSystemUsageMonitoring()
+    {
+        if (IsVisible && WindowState != WindowState.Minimized)
+        {
+            if (!systemUsageTimer.IsEnabled) { systemUsage.Reset(); systemUsage.Update(); gpuResetPending = true; _ = UpdateGpuAsync(); systemUsageTimer.Start(); }
+        }
+        else systemUsageTimer.Stop();
+    }
+    public void ApplySystemUsageInterval()
+    {
+        systemUsageTimer.Interval = TimeSpan.FromSeconds(app.Settings.SystemUsageRefreshSeconds);
+    }
+    private async System.Threading.Tasks.Task UpdateGpuAsync()
+    {
+        if (gpuReading || hardwareClosed) return;
+        gpuReading = true;
+        var reset = gpuResetPending; gpuResetPending = false;
+        try
+        {
+            var snapshots = await System.Threading.Tasks.Task.Run(() => { if (reset) gpuReader.Reset(); return gpuReader.Read(); });
+            if (hardwareClosed || !IsVisible || WindowState == WindowState.Minimized) return;
+            GpuRows.ItemsSource = snapshots.Select((snapshot, index) => new GpuViewModel(index, snapshot)).ToArray();
+            GpuSection.Header = $"GPU ({snapshots.Count})";
+            GpuMessage.Text = snapshots.Count == 0 ? "GPU情報を取得できません" : "";
+            GpuMessage.Visibility = snapshots.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or COMException)
+        {
+            GpuMessage.Text = "GPU情報の更新に失敗しました";
+            GpuMessage.Visibility = Visibility.Visible;
+        }
+        finally { gpuReading = false; if (hardwareClosed) gpuReader.Dispose(); }
     }
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
     private const int WmNcHitTest = 0x0084;

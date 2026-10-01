@@ -46,10 +46,42 @@
           <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top"><Button Content="↻" ToolTip="今すぐ更新" Click="RefreshClick" Margin="0,0,5,0"/><Button Content="−" ToolTip="トレイへ収納" Click="HideClick"/></StackPanel>
         </Grid>
       </StackPanel>
+      <Border x:Name="SystemUsagePanel" DockPanel.Dock="Top" Background="#1A202B" CornerRadius="9" Padding="10" Margin="0,0,0,12" BorderBrush="#2B3443" BorderThickness="1">
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="21"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <StackPanel ToolTip="PC全体のCPU使用率">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="CPU" FontSize="11" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="{Binding CpuText}" FontSize="14" FontWeight="SemiBold" Foreground="#6CE6C0"/></Grid>
+            <ProgressBar Value="{Binding CpuPercent, Mode=OneWay}" Maximum="100" Foreground="#6CE6C0" Margin="0,7,0,0" AutomationProperties.Name="CPU使用率"/>
+          </StackPanel>
+          <Border Grid.Column="1" Width="1" Background="#344052"/>
+          <StackPanel Grid.Column="2" ToolTip="{Binding MemoryDetail}">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="メモリ" FontSize="11" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="{Binding MemoryText}" FontSize="14" FontWeight="SemiBold" Foreground="#7FC3FA"/></Grid>
+            <ProgressBar Value="{Binding MemoryPercent, Mode=OneWay}" Maximum="100" Foreground="#7FC3FA" Margin="0,7,0,0" AutomationProperties.Name="物理メモリ使用率"/>
+            <TextBlock Text="{Binding MemoryAmount}" HorizontalAlignment="Right" FontSize="10" Foreground="#99A8BE" Margin="0,6,0,0" AutomationProperties.AutomationId="MemoryAmount"/>
+          </StackPanel>
+        </Grid>
+      </Border>
       <Button DockPanel.Dock="Bottom" HorizontalAlignment="Right" Margin="0,12,0,0" Content="設定" Click="SettingsClick" Padding="10,5"/>
       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource WidgetScrollBar}"/></ScrollViewer.Resources>
         <StackPanel>
+          <Border Background="#1A202B" CornerRadius="9" Padding="10" Margin="0,0,0,10" BorderBrush="#2B3443" BorderThickness="1">
+            <Expander x:Name="GpuSection" Header="GPU" IsExpanded="False" FontSize="11">
+              <StackPanel>
+                <Grid Margin="0,8,0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="0.85*"/><ColumnDefinition Width="1.25*"/></Grid.ColumnDefinitions><TextBlock Text="GPU" Foreground="#9BAAC0" FontSize="10"/><TextBlock Grid.Column="1" Text="GPU使用率" Foreground="#9BAAC0" FontSize="10"/><TextBlock Grid.Column="2" Text="メモリ使用率" Foreground="#9BAAC0" FontSize="10"/></Grid>
+                <ItemsControl x:Name="GpuRows"><ItemsControl.ItemTemplate><DataTemplate>
+                  <Border BorderBrush="#2B3443" BorderThickness="0,1,0,0" Padding="0,8,0,6">
+                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="0.85*"/><ColumnDefinition Width="1.25*"/></Grid.ColumnDefinitions>
+                      <StackPanel Margin="0,0,7,0"><TextBlock Text="{Binding Label}" FontSize="11"/><TextBlock Text="{Binding Name}" Foreground="#9BAAC0" FontSize="9" TextWrapping="Wrap" ToolTip="{Binding Name}"/></StackPanel>
+                      <StackPanel Grid.Column="1" Margin="0,0,8,0"><TextBlock Text="{Binding Usage}" FontSize="14" FontWeight="SemiBold" Foreground="#6CE6C0"/><ProgressBar Value="{Binding Used, Mode=OneWay}" Maximum="100" Foreground="#6CE6C0" Margin="0,5,0,0" Visibility="{Binding UsageBarVisibility}"/></StackPanel>
+                      <StackPanel Grid.Column="2"><TextBlock Text="{Binding MemoryUsage}" FontSize="14" FontWeight="SemiBold" Foreground="#7FC3FA"/><ProgressBar Value="{Binding MemoryUsed, Mode=OneWay}" Maximum="100" Foreground="#7FC3FA" Margin="0,5,0,0" Visibility="{Binding MemoryBarVisibility}"/><TextBlock Text="{Binding MemoryAmount}" HorizontalAlignment="Right" FontSize="9" Foreground="#99A8BE" Margin="0,4,0,0" TextWrapping="Wrap"/><TextBlock Text="{Binding MemoryKind}" HorizontalAlignment="Right" FontSize="9" Foreground="#99A8BE"/><TextBlock Text="{Binding SharedAmount}" Visibility="{Binding SharedVisibility}" HorizontalAlignment="Right" FontSize="9" Foreground="#99A8BE"/></StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                <TextBlock x:Name="GpuMessage" Text="取得中…" Foreground="#9BAAC0" FontSize="10" Margin="0,6,0,0"/>
+              </StackPanel>
+            </Expander>
+          </Border>
           <ItemsControl ItemsSource="{Binding}">
             <ItemsControl.ItemTemplate><DataTemplate>
               <Border Background="#1A202B" CornerRadius="9" Padding="10" Margin="0,0,0,10" BorderBrush="#2B3443" BorderThickness="1">

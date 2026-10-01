@@ -83,7 +83,7 @@
           </Border>
           <ItemsControl ItemsSource="{Binding}">
             <ItemsControl.ItemTemplate><DataTemplate>
-              <Border x:Name="GpuPanel" Visibility="Collapsed" Background="#1A202B" CornerRadius="9" Padding="10" Margin="0,0,0,10" BorderBrush="#2B3443" BorderThickness="1">
+              <Border Background="#1A202B" CornerRadius="9" Padding="10" Margin="0,0,0,10" BorderBrush="#2B3443" BorderThickness="1">
                 <StackPanel>
                   <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <DockPanel LastChildFill="True" Margin="0,0,5,0">

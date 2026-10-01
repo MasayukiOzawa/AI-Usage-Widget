@@ -4,6 +4,30 @@
     <SolidColorBrush x:Key="Ink" Color="#EAEFF7" />
     <Style TargetType="Window"><Setter Property="Background" Value="#11151D"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontFamily" Value="Yu Gothic UI, Segoe UI"/><Setter Property="FontSize" Value="12"/></Style>
     <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink}"/></Style>
+    <Style TargetType="ContextMenu">
+      <Setter Property="Background" Value="#222B39"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+      <Setter Property="BorderBrush" Value="#46536A"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="4"/>
+      <Setter Property="FontFamily" Value="Yu Gothic UI, Segoe UI"/><Setter Property="FontSize" Value="12"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu">
+        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" CornerRadius="6"><ItemsPresenter/></Border>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style TargetType="MenuItem">
+      <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="10,8"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem">
+        <Border x:Name="MenuBody" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4">
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock x:Name="CheckMark" Text="✓" Foreground="#6CE6C0" Visibility="Hidden" VerticalAlignment="Center"/>
+            <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
+          </Grid>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="MenuBody" Property="Background" Value="#354257"/></Trigger>
+          <Trigger Property="IsChecked" Value="True"><Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="MenuBody" Property="Opacity" Value="0.5"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style TargetType="ToolTip">
       <Setter Property="Background" Value="#222B39"/>
       <Setter Property="Foreground" Value="{StaticResource Ink}"/>

@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private DesktopDock? desktopDock;
     private Rect floatingBounds;
     private bool docked;
+    public bool IsDesktopDocked => docked;
     public ObservableCollection<ProviderViewModel> Providers { get; }
     public MainWindow(WidgetApp app)
     {
@@ -39,7 +40,9 @@ public partial class MainWindow : Window
             DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
             HwndSource.FromHwnd(handle)?.AddHook(WindowProc);
             desktopDock = new DesktopDock(this);
-            SetDesktopDock(app.Settings.DockToDesktop);
+            desktopDock.Failed += ReportDockFailure;
+            try { SetDesktopDock(app.Settings.DockToDesktop); }
+            catch (InvalidOperationException error) { ReportDockFailure(error.Message); }
         };
     }
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
@@ -83,15 +86,27 @@ public partial class MainWindow : Window
             floatingBounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
             WindowState = WindowState.Normal;
             docked = true; ResizeMode = ResizeMode.NoResize; MaximizeButton.IsEnabled = false;
-            desktopDock.SetEnabled(true);
+            if (!desktopDock.SetEnabled(true))
+            {
+                SetDesktopDock(false);
+                throw new InvalidOperationException("デスクトップへの固定に失敗しました。通常表示に戻しました。");
+            }
         }
         else
         {
             desktopDock.SetEnabled(false); docked = false;
             ResizeMode = ResizeMode.CanResize; MaximizeButton.IsEnabled = true;
             Left = floatingBounds.Left; Top = floatingBounds.Top; Width = floatingBounds.Width; Height = floatingBounds.Height;
-            KeepOnScreen(); SavePosition();
+            KeepOnScreen();
         }
+    }
+    private void ReportDockFailure(string message)
+    {
+        SetDesktopDock(false); app.Settings.DockToDesktop = false;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!app.IsExiting) MessageBox.Show(this, message + "\n通常表示で続行します。三点メニューから再試行できます。", "デスクトップへの固定", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }));
     }
     public void ReleaseDesktopDock() => desktopDock?.Dispose();
     public void Apply(ProviderDescriptor descriptor, UsageSnapshot snapshot)
@@ -115,9 +130,13 @@ public partial class MainWindow : Window
     }
     private void DesktopDockClick(object sender, RoutedEventArgs e)
     {
-        app.Settings.DockToDesktop = !docked;
-        SetDesktopDock(app.Settings.DockToDesktop);
-        app.Settings.Save(app.Root);
+        var previous = docked;
+        app.Settings.DockToDesktop = !previous;
+        try { app.ApplySettings(); }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            MessageBox.Show(this, error.Message, "固定設定を変更できません", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
     private void MinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void MaximizeClick(object sender, RoutedEventArgs e) => ToggleMaximize();

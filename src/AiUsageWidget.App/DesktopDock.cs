@@ -17,34 +17,67 @@ internal sealed class DesktopDock : IDisposable
     private bool registered, positioning, queued, disposed;
     private string? monitor;
     private NativeRect approvedBounds;
+    private double minimumWidth, minimumHeight;
+    public event Action<string>? Failed;
+    private readonly Func<IntPtr, uint, bool> registerAppBar;
     public bool Enabled { get; private set; }
-    public DesktopDock(Window window)
+    public DesktopDock(Window window, Func<IntPtr, uint, bool>? registerAppBar = null)
     {
         this.window = window;
         handle = new WindowInteropHelper(window).Handle;
+        this.registerAppBar = registerAppBar ?? ((hwnd, message) =>
+        {
+            var data = Data(); data.Window = hwnd; data.Callback = message;
+            return SHAppBarMessage(0, ref data) != UIntPtr.Zero;
+        });
         HwndSource.FromHwnd(handle)?.AddHook(Hook);
     }
-    public void SetEnabled(bool enabled)
+    public bool SetEnabled(bool enabled)
     {
+        if (!enabled) { Disable(); return true; }
+        if (enabled && !Enabled)
+        {
+            minimumWidth = window.MinWidth; minimumHeight = window.MinHeight;
+            window.MinWidth = 0; window.MinHeight = 0;
+        }
         Enabled = enabled;
         if (enabled && monitor == null) monitor = System.Windows.Forms.Screen.FromHandle(handle).DeviceName;
-        Refresh();
-        if (!enabled) monitor = null;
+        // Validate registration even before the window is visible, before a caller persists the option.
+        if (enabled && !Register()) { Disable(); return false; }
+        return Refresh(false);
     }
-    public void Refresh()
+    public bool Refresh(bool reportFailure = true)
     {
-        if (disposed) return;
+        if (disposed) return false;
         if (!Enabled || !window.IsVisible || window.WindowState == WindowState.Minimized)
         {
-            Remove(); return;
+            Remove(); return true;
         }
+        try
+        {
+            if (!Register()) throw new InvalidOperationException("デスクトップへの固定を登録できませんでした。");
+            Position(); return true;
+        }
+        catch (Exception error) when (error is InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
+        {
+            Disable();
+            if (reportFailure) Failed?.Invoke(error.Message);
+            return false;
+        }
+    }
+    private bool Register()
+    {
         if (!registered)
         {
-            var data = Data(); data.Callback = callback;
-            registered = SHAppBarMessage(0, ref data) != UIntPtr.Zero;
-            if (!registered) throw new InvalidOperationException("デスクトップへの固定を登録できませんでした。");
+            registered = registerAppBar(handle, callback);
         }
-        Position();
+        return registered;
+    }
+    private void Disable()
+    {
+        Remove(); monitor = null;
+        if (Enabled) { window.MinWidth = minimumWidth; window.MinHeight = minimumHeight; }
+        Enabled = false;
     }
     private void Position()
     {
@@ -61,6 +94,8 @@ internal sealed class DesktopDock : IDisposable
             data.Rect = new NativeRect { Left = bounds.Right - width, Top = bounds.Top, Right = bounds.Right, Bottom = bounds.Bottom };
             SHAppBarMessage(2, ref data);
             data.Rect.Left = data.Rect.Right - width;
+            if (width <= 0 || data.Rect.Bottom <= data.Rect.Top)
+                throw new InvalidOperationException("デスクトップに固定できる領域がありません。");
             SHAppBarMessage(3, ref data);
             approvedBounds = data.Rect;
             // Keep WPF's layout properties in sync; a later layout pass must not restore the floating size.
@@ -69,8 +104,9 @@ internal sealed class DesktopDock : IDisposable
             window.Top = data.Rect.Top / dpi.DpiScaleY;
             window.Width = (data.Rect.Right - data.Rect.Left) / dpi.DpiScaleX;
             window.Height = (data.Rect.Bottom - data.Rect.Top) / dpi.DpiScaleY;
-            SetWindowPos(handle, IntPtr.Zero, data.Rect.Left, data.Rect.Top,
-                data.Rect.Right - data.Rect.Left, data.Rect.Bottom - data.Rect.Top, 0x0014);
+            if (!SetWindowPos(handle, IntPtr.Zero, data.Rect.Left, data.Rect.Top,
+                data.Rect.Right - data.Rect.Left, data.Rect.Bottom - data.Rect.Top, 0x0014))
+                throw new InvalidOperationException("固定ウィンドウの位置を設定できませんでした。");
         }
         finally { positioning = false; }
     }

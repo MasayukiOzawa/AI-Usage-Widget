@@ -251,6 +251,24 @@ public sealed class CoreTests : IDisposable
         Assert.Equal(90, settings.CodexRefreshSeconds); Assert.Equal(90, settings.CopilotRefreshSeconds); Assert.Equal(300, settings.ClaudeRefreshSeconds);
         Assert.Equal(90, settings.GetRefreshSeconds("codex")); Assert.Equal(300, settings.GetRefreshSeconds("claude"));
     }
+    [Fact] public void FailedDockRegistrationKeepsPersistedAndInMemorySetting()
+    {
+        var settings = new WidgetSettings(); settings.Save(root); settings.DockToDesktop = true;
+        var native = false;
+        Assert.Throws<InvalidOperationException>(() => settings.ApplyDockAndSave(root, false, enabled =>
+        {
+            if (enabled) throw new InvalidOperationException("Registration failed"); native = enabled;
+        }));
+        Assert.False(native); Assert.False(settings.DockToDesktop);
+        Assert.False(WidgetSettings.Load(root).DockToDesktop);
+    }
+    [Fact] public void FailedDockSaveRestoresPreviousNativeAndSettingsState()
+    {
+        var blocked = Path.Combine(root, "blocked"); Directory.CreateDirectory(root); File.WriteAllText(blocked, "file");
+        var settings = new WidgetSettings { DockToDesktop = true }; var native = false;
+        Assert.ThrowsAny<IOException>(() => settings.ApplyDockAndSave(blocked, false, enabled => native = enabled));
+        Assert.False(native); Assert.False(settings.DockToDesktop);
+    }
     [Fact] public void DesktopDockDefaultsOffAndPersistsIndependentlyOfPin()
     {
         Assert.False(new WidgetSettings().DockToDesktop);

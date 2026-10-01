@@ -32,8 +32,8 @@ public sealed class GpuViewModel
         MemoryUsage = memoryPercent is { } value ? $"{value:0}%" : "";
         MemoryUsed = memoryPercent ?? 0;
         MemoryBarVisibility = memoryPercent.HasValue ? Visibility.Visible : Visibility.Collapsed;
-        MemoryAmount = dedicated && used.HasValue
-            ? $"{Gb(used!.Value)} / {Gb(total!.Value)} GB"
+        MemoryAmount = dedicated
+            ? used.HasValue ? $"{Gb(used.Value)} / {Gb(total!.Value)} GB" : ""
             : snapshot.SharedUsedBytes is { } shared ? $"共有 {Gb(shared)} GB" : "";
         MemoryKind = dedicated && used.HasValue ? "専用" : "";
         SharedAmount = dedicated && snapshot.SharedUsedBytes is { } bytes ? $"共有 {Gb(bytes)} GB" : "";

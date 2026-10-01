@@ -80,13 +80,11 @@ public partial class MainWindow : Window
             if (hardwareClosed || !IsVisible || WindowState == WindowState.Minimized) return;
             GpuRows.ItemsSource = snapshots.Select((snapshot, index) => new GpuViewModel(index, snapshot)).ToArray();
             GpuSection.Header = $"GPU ({snapshots.Count})";
-            GpuMessage.Text = snapshots.Count == 0 ? "GPU情報を取得できません" : "";
-            GpuMessage.Visibility = snapshots.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            GpuPanel.Visibility = snapshots.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         }
         catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or COMException)
         {
-            GpuMessage.Text = "GPU情報の更新に失敗しました";
-            GpuMessage.Visibility = Visibility.Visible;
+            // Keep previously obtained GPU information; unavailable fields are omitted.
         }
         finally { gpuReading = false; if (hardwareClosed) gpuReader.Dispose(); }
     }

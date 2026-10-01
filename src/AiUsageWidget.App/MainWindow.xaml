@@ -65,7 +65,7 @@
       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource WidgetScrollBar}"/></ScrollViewer.Resources>
         <StackPanel>
-          <Border Background="#1A202B" CornerRadius="9" Padding="10" Margin="0,0,0,10" BorderBrush="#2B3443" BorderThickness="1">
+          <Border x:Name="GpuPanel" Visibility="Collapsed" Background="#1A202B" CornerRadius="9" Padding="10" Margin="0,0,0,10" BorderBrush="#2B3443" BorderThickness="1">
             <Expander x:Name="GpuSection" Header="GPU" IsExpanded="False" FontSize="11">
               <StackPanel>
                 <Grid Margin="0,8,0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="0.85*"/><ColumnDefinition Width="1.25*"/></Grid.ColumnDefinitions><TextBlock Text="GPU" Foreground="#9BAAC0" FontSize="10"/><TextBlock Grid.Column="1" Text="GPU使用率" Foreground="#9BAAC0" FontSize="10"/><TextBlock Grid.Column="2" Text="メモリ使用率" Foreground="#9BAAC0" FontSize="10"/></Grid>
@@ -73,18 +73,17 @@
                   <Border BorderBrush="#2B3443" BorderThickness="0,1,0,0" Padding="0,8,0,6">
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="0.85*"/><ColumnDefinition Width="1.25*"/></Grid.ColumnDefinitions>
                       <StackPanel Margin="0,0,7,0"><TextBlock Text="{Binding Label}" FontSize="11"/><TextBlock Text="{Binding Name}" Foreground="#9BAAC0" FontSize="9" TextWrapping="Wrap" ToolTip="{Binding Name}"/></StackPanel>
-                      <StackPanel Grid.Column="1" Margin="0,0,8,0"><TextBlock Text="{Binding Usage}" FontSize="14" FontWeight="SemiBold" Foreground="#6CE6C0"/><ProgressBar Value="{Binding Used, Mode=OneWay}" Maximum="100" Foreground="#6CE6C0" Margin="0,5,0,0" Visibility="{Binding UsageBarVisibility}"/></StackPanel>
-                      <StackPanel Grid.Column="2"><TextBlock Text="{Binding MemoryUsage}" FontSize="14" FontWeight="SemiBold" Foreground="#7FC3FA"/><ProgressBar Value="{Binding MemoryUsed, Mode=OneWay}" Maximum="100" Foreground="#7FC3FA" Margin="0,5,0,0" Visibility="{Binding MemoryBarVisibility}"/><TextBlock Text="{Binding MemoryAmount}" HorizontalAlignment="Right" FontSize="9" Foreground="#99A8BE" Margin="0,4,0,0" TextWrapping="Wrap"/><TextBlock Text="{Binding MemoryKind}" HorizontalAlignment="Right" FontSize="9" Foreground="#99A8BE"/><TextBlock Text="{Binding SharedAmount}" Visibility="{Binding SharedVisibility}" HorizontalAlignment="Right" FontSize="9" Foreground="#99A8BE"/></StackPanel>
+                      <StackPanel Grid.Column="1" Margin="0,0,8,0"><TextBlock Text="{Binding Usage}" Visibility="{Binding UsageBarVisibility}" FontSize="14" FontWeight="SemiBold" Foreground="#6CE6C0"/><ProgressBar Value="{Binding Used, Mode=OneWay}" Maximum="100" Foreground="#6CE6C0" Margin="0,5,0,0" Visibility="{Binding UsageBarVisibility}"/></StackPanel>
+                      <StackPanel Grid.Column="2"><TextBlock Text="{Binding MemoryUsage}" Visibility="{Binding MemoryBarVisibility}" FontSize="14" FontWeight="SemiBold" Foreground="#7FC3FA"/><ProgressBar Value="{Binding MemoryUsed, Mode=OneWay}" Maximum="100" Foreground="#7FC3FA" Margin="0,5,0,0" Visibility="{Binding MemoryBarVisibility}"/><TextBlock Text="{Binding MemoryAmount}" Visibility="{Binding MemoryAmountVisibility}" HorizontalAlignment="Right" FontSize="9" Foreground="#99A8BE" Margin="0,4,0,0" TextWrapping="Wrap"/><TextBlock Text="{Binding MemoryKind}" Visibility="{Binding MemoryKindVisibility}" HorizontalAlignment="Right" FontSize="9" Foreground="#99A8BE"/><TextBlock Text="{Binding SharedAmount}" Visibility="{Binding SharedVisibility}" HorizontalAlignment="Right" FontSize="9" Foreground="#99A8BE"/></StackPanel>
                     </Grid>
                   </Border>
                 </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                <TextBlock x:Name="GpuMessage" Text="取得中…" Foreground="#9BAAC0" FontSize="10" Margin="0,6,0,0"/>
               </StackPanel>
             </Expander>
           </Border>
           <ItemsControl ItemsSource="{Binding}">
             <ItemsControl.ItemTemplate><DataTemplate>
-              <Border Background="#1A202B" CornerRadius="9" Padding="10" Margin="0,0,0,10" BorderBrush="#2B3443" BorderThickness="1">
+              <Border x:Name="GpuPanel" Visibility="Collapsed" Background="#1A202B" CornerRadius="9" Padding="10" Margin="0,0,0,10" BorderBrush="#2B3443" BorderThickness="1">
                 <StackPanel>
                   <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <DockPanel LastChildFill="True" Margin="0,0,5,0">

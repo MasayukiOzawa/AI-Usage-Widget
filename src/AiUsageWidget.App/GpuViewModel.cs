@@ -14,26 +14,28 @@ public sealed class GpuViewModel
     public double MemoryUsed { get; }
     public Visibility MemoryBarVisibility { get; }
     public string MemoryAmount { get; }
+    public Visibility MemoryAmountVisibility => string.IsNullOrEmpty(MemoryAmount) ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility MemoryKindVisibility => string.IsNullOrEmpty(MemoryKind) ? Visibility.Collapsed : Visibility.Visible;
     public string MemoryKind { get; }
     public string SharedAmount { get; }
     public Visibility SharedVisibility { get; }
     public GpuViewModel(int index, GpuSnapshot snapshot)
     {
         Label = $"GPU {index}"; Name = snapshot.Name;
-        Usage = snapshot.UtilizationPercent is { } percent ? $"{percent:0}%" : "取得不可";
+        Usage = snapshot.UtilizationPercent is { } percent ? $"{percent:0}%" : "";
         Used = snapshot.UtilizationPercent ?? 0;
-        UsageBarVisibility = snapshot.UtilizationPercent.HasValue ? Visibility.Visible : Visibility.Hidden;
+        UsageBarVisibility = snapshot.UtilizationPercent.HasValue ? Visibility.Visible : Visibility.Collapsed;
         var total = snapshot.DedicatedTotalBytes;
         var used = snapshot.DedicatedUsedBytes;
         var dedicated = total is > 0;
         var memoryPercent = dedicated && used.HasValue ? Math.Clamp(100d * used.Value / total!.Value, 0, 100) : (double?)null;
-        MemoryUsage = memoryPercent is { } value ? $"{value:0}%" : "取得不可";
+        MemoryUsage = memoryPercent is { } value ? $"{value:0}%" : "";
         MemoryUsed = memoryPercent ?? 0;
-        MemoryBarVisibility = memoryPercent.HasValue ? Visibility.Visible : Visibility.Hidden;
-        MemoryAmount = dedicated
-            ? $"{(used.HasValue ? Gb(used.Value) : "—")} / {Gb(total!.Value)} GB"
-            : snapshot.SharedUsedBytes is { } shared ? $"共有 {Gb(shared)} GB" : "取得不可";
-        MemoryKind = dedicated ? "専用" : "";
+        MemoryBarVisibility = memoryPercent.HasValue ? Visibility.Visible : Visibility.Collapsed;
+        MemoryAmount = dedicated && used.HasValue
+            ? $"{Gb(used!.Value)} / {Gb(total!.Value)} GB"
+            : snapshot.SharedUsedBytes is { } shared ? $"共有 {Gb(shared)} GB" : "";
+        MemoryKind = dedicated && used.HasValue ? "専用" : "";
         SharedAmount = dedicated && snapshot.SharedUsedBytes is { } bytes ? $"共有 {Gb(bytes)} GB" : "";
         SharedVisibility = dedicated && snapshot.SharedUsedBytes is > 0 ? Visibility.Visible : Visibility.Collapsed;
     }

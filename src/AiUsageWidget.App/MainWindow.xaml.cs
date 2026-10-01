@@ -137,7 +137,10 @@ public partial class MainWindow : Window
         Topmost = pinned;
         app.Settings.AlwaysOnTop = pinned;
         PinButton.Background = pinned ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#354257")) : Brushes.Transparent;
-        PinGlyph.Foreground = pinned ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#6CE6C0")) : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#CBD5E4"));
+        var pinColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString(pinned ? "#6CE6C0" : "#CBD5E4"));
+        PinGlyph.Stroke = pinColor;
+        PinGlyph.Fill = pinned ? pinColor : Brushes.Transparent;
+        PinGlyph.RenderTransform = new RotateTransform(pinned ? 0 : 35);
         PinButton.ToolTip = pinned ? "最前面表示を解除" : "最前面に固定";
         System.Windows.Automation.AutomationProperties.SetName(PinButton, pinned ? "最前面表示を解除" : "最前面に固定");
         if (save) try { app.Settings.Save(app.Root); } catch (System.IO.IOException) { }

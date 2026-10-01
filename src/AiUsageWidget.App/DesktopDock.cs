@@ -16,6 +16,7 @@ internal sealed class DesktopDock : IDisposable
     private readonly uint taskbarCreated = RegisterWindowMessage("TaskbarCreated");
     private bool registered, positioning, queued, disposed;
     private string? monitor;
+    private NativeRect approvedBounds;
     public bool Enabled { get; private set; }
     public DesktopDock(Window window)
     {
@@ -61,6 +62,13 @@ internal sealed class DesktopDock : IDisposable
             SHAppBarMessage(2, ref data);
             data.Rect.Left = data.Rect.Right - width;
             SHAppBarMessage(3, ref data);
+            approvedBounds = data.Rect;
+            // Keep WPF's layout properties in sync; a later layout pass must not restore the floating size.
+            var dpi = VisualTreeHelper.GetDpi(window);
+            window.Left = data.Rect.Left / dpi.DpiScaleX;
+            window.Top = data.Rect.Top / dpi.DpiScaleY;
+            window.Width = (data.Rect.Right - data.Rect.Left) / dpi.DpiScaleX;
+            window.Height = (data.Rect.Bottom - data.Rect.Top) / dpi.DpiScaleY;
             SetWindowPos(handle, IntPtr.Zero, data.Rect.Left, data.Rect.Top,
                 data.Rect.Right - data.Rect.Left, data.Rect.Bottom - data.Rect.Top, 0x0014);
         }
@@ -81,7 +89,13 @@ internal sealed class DesktopDock : IDisposable
         else if ((uint)message == callback && wParam.ToInt32() == 1 && !positioning) QueueRefresh();
         else if (message is 0x007E or 0x02E0) QueueRefresh(); // display / DPI change
         else if (registered && message == 0x0006) { var data = Data(); SHAppBarMessage(6, ref data); }
-        else if (registered && message == 0x0047 && !positioning) { var data = Data(); SHAppBarMessage(9, ref data); }
+        else if (registered && message == 0x0047 && !positioning)
+        {
+            var data = Data(); SHAppBarMessage(9, ref data);
+            if (window.WindowState != WindowState.Minimized && GetWindowRect(handle, out var actual)
+                && (actual.Left != approvedBounds.Left || actual.Top != approvedBounds.Top
+                    || actual.Right != approvedBounds.Right || actual.Bottom != approvedBounds.Bottom)) QueueRefresh();
+        }
         return IntPtr.Zero;
     }
     private AppBarData Data() => new() { Size = (uint)Marshal.SizeOf<AppBarData>(), Window = handle };
@@ -102,6 +116,8 @@ internal sealed class DesktopDock : IDisposable
     }
     [DllImport("shell32.dll")] private static extern UIntPtr SHAppBarMessage(uint message, ref AppBarData data);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern uint RegisterWindowMessage(string message);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
 }

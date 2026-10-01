@@ -7,6 +7,9 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>AiUsageWidget</AssemblyName>
     <ApplicationIcon>Assets\AiUsageWidget.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WPF owns startup; WinForms is only used for the tray and screen enumeration. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../AiUsageWidget.Core/AiUsageWidget.Core.csproj" /></ItemGroup>
   <ItemGroup>

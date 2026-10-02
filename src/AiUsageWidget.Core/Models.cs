@@ -21,6 +21,10 @@ public sealed record TokenDay(DateOnly Date, long Tokens);
 public sealed record AvailableModel(string Id, string Name, string? Description);
 public sealed record CapabilityItem(string Name, string Detail, string? Description = null);
 public sealed record CapabilityLocation(string Label, string Value);
+public sealed record RateLimitResetCredit(string ResetType, string Status, DateTimeOffset? GrantedAt, DateTimeOffset? ExpiresAt,
+    string? Title = null);
+public sealed record RateLimitResetStatus(int? AvailableCount, IReadOnlyList<string> ReachedTypes, IReadOnlyList<RateLimitResetCredit> Credits);
+
 public sealed record ProviderCapabilities(IReadOnlyList<CapabilityItem> Skills, IReadOnlyList<CapabilityItem> Plugins,
     IReadOnlyList<CapabilityItem> McpServers, string? Message = null);
 public sealed record UsageSnapshot(string ProviderId, string AccountKey, DateTimeOffset ReceivedAt, string Source, UsageStatus Status,
@@ -31,6 +35,7 @@ public sealed record UsageSnapshot(string ProviderId, string AccountKey, DateTim
     public string? ModelsMessage { get; init; }
     public ProviderCapabilities? Capabilities { get; init; }
     public IReadOnlyList<CapabilityLocation>? Details { get; init; }
+    public RateLimitResetStatus? ResetStatus { get; init; }
 }
 public interface IUsageProvider : IAsyncDisposable
 {
@@ -82,6 +87,30 @@ public static class ProviderParsers
             DateOnly.TryParseExact(row.Text("startDate"), "yyyy-MM-dd", out var date) && row.Get("tokens") is { ValueKind: JsonValueKind.Number } n && n.TryGetInt64(out var count) && count >= 0
             ? new TokenDay(date, count) : null).OfType<TokenDay>().GroupBy(x => x.Date).Select(g => g.Last()).OrderBy(x => x.Date).ToArray();
     }
+    public static RateLimitResetStatus CodexResetStatus(JsonElement result)
+    {
+        var reachedTypes = new List<string>();
+        if (result.Get("rateLimitsByLimitId") is { ValueKind: JsonValueKind.Object } buckets && buckets.EnumerateObject().Any())
+            reachedTypes.AddRange(buckets.EnumerateObject().Select(x => x.Value.Text("rateLimitReachedType")).OfType<string>());
+        else if (result.Get("rateLimits") is { ValueKind: JsonValueKind.Object } bucket && bucket.Text("rateLimitReachedType") is { } reached)
+            reachedTypes.Add(reached);
+
+        if (result.Get("rateLimitResetCredits") is not { ValueKind: JsonValueKind.Object } resetCredits)
+            return new(null, reachedTypes.Distinct().ToArray(), []);
+
+        var availableCount = resetCredits.Number("availableCount");
+        var parsed = new List<RateLimitResetCredit>();
+        if (resetCredits.Get("credits") is not { ValueKind: JsonValueKind.Array } credits)
+            return new(ToCount(availableCount), reachedTypes.Distinct().ToArray(), parsed);
+        foreach (var credit in credits.EnumerateArray())
+        {
+            if (credit.ValueKind != JsonValueKind.Object) continue;
+            parsed.Add(new(credit.Text("resetType") ?? "", credit.Text("status") ?? "", credit.Unix("grantedAt"),
+                credit.Unix("expiresAt"), credit.Text("title")));
+        }
+        return new(ToCount(availableCount), reachedTypes.Distinct().ToArray(), parsed);
+    }
+
     public static IReadOnlyList<QuotaWindow> Copilot(JsonElement result, DateTimeOffset receivedAt, JsonElement? user = null)
     {
         if (result.Get("quotaSnapshots") is not { ValueKind: JsonValueKind.Object } map) return [];
@@ -159,6 +188,7 @@ public static class ProviderParsers
         _ => id
     };
     private static bool IsClaudeSupplemental(string id) => id is "seven_day_opus" or "seven_day_sonnet" or "weekly_scoped" or "extra_usage";
+    private static int? ToCount(double? value) => value is >= 0 and <= int.MaxValue && value == Math.Truncate(value.Value) ? (int)value.Value : null;
     private static DateTimeOffset? IsoDate(string? value) => DateTimeOffset.TryParse(value, out var date) ? date : null;
     private static double? Remaining(double? used) => used is { } n ? Math.Clamp(100 - n, 0, 100) : null;
     private static double? NonNegative(double? value) => value is >= 0 ? value : null;

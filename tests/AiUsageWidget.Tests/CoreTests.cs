@@ -24,6 +24,32 @@ public sealed class CoreTests : IDisposable
         var rows = ProviderParsers.Tokens(Parse("""{"dailyUsageBuckets":[{"startDate":"2026-09-07","tokens":3416518819},{"startDate":"invalid","tokens":2},{"startDate":"2026-09-02","tokens":9}]}"""));
         Assert.Equal(2, rows.Count); Assert.Equal(3416518819L, rows[1].Tokens); Assert.Equal(new DateOnly(2026,9,2), rows[0].Date);
     }
+    [Fact] public void CodexResetCreditDetailsExposeStatusWithoutOpaqueIds()
+    {
+        var status = ProviderParsers.CodexResetStatus(Parse("""{"rateLimits":{"rateLimitReachedType":"primary"},"rateLimitResetCredits":{"availableCount":2,"credits":[{"id":"private-credit-id","resetType":"codexRateLimits","status":"available","grantedAt":1781654400,"expiresAt":1784246400,"title":"Rate-limit reset","description":"Reset an eligible Codex rate-limit window."}]}}"""));
+        Assert.Equal(2, status.AvailableCount); Assert.Equal("primary", Assert.Single(status.ReachedTypes));
+        var credit = Assert.Single(status.Credits);
+        Assert.Equal("codexRateLimits", credit.ResetType); Assert.Equal("available", credit.Status);
+        Assert.NotNull(credit.GrantedAt); Assert.NotNull(credit.ExpiresAt);
+        Assert.Equal("Rate-limit reset", credit.Title);
+        Assert.DoesNotContain("private-credit-id", JsonSerializer.Serialize(status));
+    }
+    [Fact] public void CodexResetCreditDetailsKeepUnavailableDistinctFromZero()
+    {
+        var unavailable = ProviderParsers.CodexResetStatus(Parse("""{"rateLimits":{"rateLimitReachedType":null}}"""));
+        Assert.Empty(unavailable.ReachedTypes); Assert.Null(unavailable.AvailableCount); Assert.Empty(unavailable.Credits);
+        var zero = ProviderParsers.CodexResetStatus(Parse("""{"rateLimitResetCredits":{"availableCount":0,"credits":[]}}"""));
+        Assert.Equal(0, zero.AvailableCount); Assert.Empty(zero.Credits);
+    }
+
+    [Fact] public void CodexResetStatusFallsBackWhenLimitMapIsEmpty()
+    {
+        var status = ProviderParsers.CodexResetStatus(Parse("""{"rateLimitsByLimitId":{},"rateLimits":{"rateLimitReachedType":"primary"}}"""));
+        Assert.Equal("primary", Assert.Single(status.ReachedTypes));
+        var mapped = ProviderParsers.CodexResetStatus(Parse("""{"rateLimitsByLimitId":{"codex":{"rateLimitReachedType":"secondary"}},"rateLimits":{"rateLimitReachedType":"primary"}}"""));
+        Assert.Equal("secondary", Assert.Single(mapped.ReachedTypes));
+    }
+
     [Fact] public void CopilotUnlimitedDoesNotDivideByZeroOrInventRequestUnits()
     {
         var q = ProviderParsers.Copilot(Parse("""{"quotaSnapshots":{"chat":{"isUnlimitedEntitlement":true,"entitlementRequests":0,"remainingPercentage":100},"premium_interactions":{"remainingPercentage":99.1,"tokenBasedBilling":true,"resetDate":"2020-01-01T00:00:00Z"},"future":{"remainingPercentage":null}}}"""), DateTimeOffset.UtcNow);

@@ -12,7 +12,7 @@ public sealed class CapabilityCatalogTests
         using var doc = JsonDocument.Parse("""{"data":[{"cwd":"C:/","skills":[{"name":"review","description":"Review code","enabled":true,"path":"C:/.codex/plugins/review/SKILL.md"},{"name":"disabled","enabled":false},{"name":"review","enabled":true}]}]}""");
         var skill = Assert.Single(CapabilityCatalog.ParseCodexSkills(doc.RootElement));
         Assert.Equal("review", skill.Name);
-        Assert.Equal("プラグイン", skill.Detail);
+        Assert.Equal("プラグイン提供", skill.Detail);
         Assert.Equal("Review code", skill.Description);
     }
 

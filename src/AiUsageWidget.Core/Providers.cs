@@ -52,7 +52,8 @@ public sealed class CodexProvider(Func<string?> path) : IUsageProvider
                 return new ProviderCapabilities(skills, CapabilityCatalog.CodexPlugins(), mcp);
             }, ct);
             return new("codex", key, DateTimeOffset.UtcNow, "Codex App Server", UsageStatus.Ready, ProviderParsers.Codex(limits), message, tokens)
-            { Plan = account.Get("account")?.Text("planType"), Models = models, ModelsMessage = catalog.Message, Capabilities = capabilities };
+            { Plan = account.Get("account")?.Text("planType"), Models = models, ModelsMessage = catalog.Message, Capabilities = capabilities,
+                ResetStatus = ProviderParsers.CodexResetStatus(limits) };
         }
         catch { if (rpc != null) { await rpc.DisposeAsync(); rpc = null; } throw; }
     }

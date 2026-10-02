@@ -85,7 +85,7 @@ public sealed class CapabilityCatalog
         var mcp = ParseClaudeMcp(await RunAsync(executable, ["mcp", "list"], ct));
         var skills = ReadSkills(Path.Combine(AppPaths.ClaudeHome, "skills")).ToList();
         foreach (var plugin in plugins)
-            if (plugin.Description is { Length: > 0 } path) skills.AddRange(ReadSkills(Path.Combine(path, "skills")));
+            if (plugin.Description is { Length: > 0 } path) skills.AddRange(ReadSkills(Path.Combine(path, "skills"), "プラグイン提供"));
         return new(Unique(skills), plugins.Select(x => x with { Description = null }).ToArray(), mcp);
     }
 
@@ -116,7 +116,7 @@ public sealed class CapabilityCatalog
         }).OfType<CapabilityItem>());
     }
 
-    private static IEnumerable<CapabilityItem> ReadSkills(string root)
+    private static IEnumerable<CapabilityItem> ReadSkills(string root, string source = "ユーザー")
     {
         if (!Directory.Exists(root)) yield break;
         foreach (var file in Directory.EnumerateFiles(root, "SKILL.md", SearchOption.AllDirectories))
@@ -132,7 +132,7 @@ public sealed class CapabilityCatalog
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { continue; }
             name ??= Directory.GetParent(file)?.Name;
-            if (!string.IsNullOrWhiteSpace(name)) yield return new(name, "ユーザー", description);
+            if (!string.IsNullOrWhiteSpace(name)) yield return new(name, source, description);
         }
     }
 
@@ -158,7 +158,7 @@ public sealed class CapabilityCatalog
         .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase).Select(x => x.First()).OrderBy(x => x.Name).ToArray();
     public static string SourceLabel(string? value) => value?.ToLowerInvariant() switch
     {
-        { } x when x.Contains("plugin") => "プラグイン",
+        { } x when x.Contains("plugin") => "プラグイン提供",
         { } x when x.Contains("project") => "プロジェクト",
         { } x when x.Contains("personal") || x.Contains("user") => "ユーザー",
         { } x when x.Contains("builtin") || x.Contains("system") => "内蔵",

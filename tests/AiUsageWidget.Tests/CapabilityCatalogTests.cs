@@ -6,6 +6,19 @@ namespace AiUsageWidget.Tests;
 
 public sealed class CapabilityCatalogTests
 {
+    [Theory]
+    [InlineData("Plugin", "プラグイン提供")]
+    [InlineData("Project", "プロジェクト")]
+    [InlineData("Builtin", "内蔵")]
+    [InlineData("C:/Users/plugin-user/.codex/skills/review/SKILL.md", "ユーザー")]
+    [InlineData("C:/project/plugin-system/.codex/skills/review/SKILL.md", "ユーザー")]
+    [InlineData("C:/user/.codex/plugins-other/review/SKILL.md", "ユーザー")]
+    [InlineData("C:\\user\\.codex\\plugins\\review\\skills\\SKILL.md", "プラグイン提供")]
+    [InlineData("~/.codex/plugins/review/skills/SKILL.md", "プラグイン提供")]
+    [InlineData("~/.codex/skills/.system/review/SKILL.md", "内蔵")]
+    public void SkillSourcesUseExactValuesAndPathSegments(string source, string expected) =>
+        Assert.Equal(expected, CapabilityCatalog.SourceLabel(source));
+
     [Fact]
     public void CodexSkillsIncludeOnlyEnabledUniqueEntries()
     {

@@ -42,6 +42,14 @@ public sealed class CoreTests : IDisposable
         Assert.Equal(0, zero.AvailableCount); Assert.Empty(zero.Credits);
     }
 
+    [Fact] public void CodexResetStatusFallsBackWhenLimitMapIsEmpty()
+    {
+        var status = ProviderParsers.CodexResetStatus(Parse("""{"rateLimitsByLimitId":{},"rateLimits":{"rateLimitReachedType":"primary"}}"""));
+        Assert.Equal("primary", Assert.Single(status.ReachedTypes));
+        var mapped = ProviderParsers.CodexResetStatus(Parse("""{"rateLimitsByLimitId":{"codex":{"rateLimitReachedType":"secondary"}},"rateLimits":{"rateLimitReachedType":"primary"}}"""));
+        Assert.Equal("secondary", Assert.Single(mapped.ReachedTypes));
+    }
+
     [Fact] public void CopilotUnlimitedDoesNotDivideByZeroOrInventRequestUnits()
     {
         var q = ProviderParsers.Copilot(Parse("""{"quotaSnapshots":{"chat":{"isUnlimitedEntitlement":true,"entitlementRequests":0,"remainingPercentage":100},"premium_interactions":{"remainingPercentage":99.1,"tokenBasedBilling":true,"resetDate":"2020-01-01T00:00:00Z"},"future":{"remainingPercentage":null}}}"""), DateTimeOffset.UtcNow);

@@ -4,8 +4,8 @@
     <Style x:Key="SkillFilter" TargetType="RadioButton">
       <Setter Property="Foreground" Value="#CBD5E4"/><Setter Property="Background" Value="#222B39"/><Setter Property="Padding" Value="4,6"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
-        <Border x:Name="Chip" Background="{TemplateBinding Background}" BorderBrush="#46536A" BorderThickness="1" CornerRadius="6" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center"/></Border>
-        <ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Chip" Property="Background" Value="#23483F"/><Setter TargetName="Chip" Property="BorderBrush" Value="#6CE6C0"/><Setter Property="Foreground" Value="#6CE6C0"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chip" Property="Opacity" Value="0.85"/></Trigger></ControlTemplate.Triggers>
+        <Grid><Border x:Name="Chip" Background="{TemplateBinding Background}" BorderBrush="#46536A" BorderThickness="1" CornerRadius="6" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center"/></Border><Border x:Name="FocusRing" Margin="2" BorderBrush="#EAEFF7" BorderThickness="1" CornerRadius="4" Visibility="Collapsed" IsHitTestVisible="False"/></Grid>
+        <ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Chip" Property="Background" Value="#23483F"/><Setter TargetName="Chip" Property="BorderBrush" Value="#6CE6C0"/><Setter Property="Foreground" Value="#6CE6C0"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chip" Property="Opacity" Value="0.85"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="FocusRing" Property="Visibility" Value="Visible"/></Trigger></ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="CaptionButton" TargetType="Button">

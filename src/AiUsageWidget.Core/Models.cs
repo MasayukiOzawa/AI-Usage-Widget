@@ -90,7 +90,7 @@ public static class ProviderParsers
     public static RateLimitResetStatus CodexResetStatus(JsonElement result)
     {
         var reachedTypes = new List<string>();
-        if (result.Get("rateLimitsByLimitId") is { ValueKind: JsonValueKind.Object } buckets)
+        if (result.Get("rateLimitsByLimitId") is { ValueKind: JsonValueKind.Object } buckets && buckets.EnumerateObject().Any())
             reachedTypes.AddRange(buckets.EnumerateObject().Select(x => x.Value.Text("rateLimitReachedType")).OfType<string>());
         else if (result.Get("rateLimits") is { ValueKind: JsonValueKind.Object } bucket && bucket.Text("rateLimitReachedType") is { } reached)
             reachedTypes.Add(reached);

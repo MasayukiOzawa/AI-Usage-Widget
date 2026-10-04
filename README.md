@@ -161,7 +161,7 @@ Releaseの `AiUsageWidget-v1.0.0-win-x64.zip` には、.NET 10ランタイム、
 - [Copilot SDK 使用量と使用枠](https://github.com/github/copilot-sdk/blob/main/docs/features/usage-and-billing.md)
 - [Claude Code 認証](https://code.claude.com/docs/en/authentication)
 
-表示: 各カードは残り％と使用率バーを表示します。プラン / SKUは画面に表示しません。使用量 / 上限は実数を取得できる枠だけに表示し、両方とも不明な枠や無制限枠では省略します。Codexの使用量 / 上限は表示せず、日別トークン数は「履歴」で確認できます。Copilotの単位は課金方式のメタデータに従い、判別不能なら単位不明とします。
+表示: 各カードは残り％と使用率バーを表示します。各カードの「詳細」の先頭に「プラン / SKU」を表示します。Codexはプラン種別、CopilotはSKU（取得できなければ契約プラン）、Claude Codeは契約プランを表示し、値が空・未取得の場合は「取得不可」と表示します。長い値は折り返して表示します。使用量 / 上限は実数を取得できる枠だけに表示し、両方とも不明な枠や無制限枠では省略します。Codexの使用量 / 上限は表示せず、日別トークン数は「履歴」で確認できます。Copilotの単位は課金方式のメタデータに従い、判別不能なら単位不明とします。
 SDK 1.0.13 の認証型とランタイムの不一致に限り、CopilotMetadata は同じ SDK 接続の読み取り RPC を互換取得します。SDK 更新時にはこの互換処理を再検証してください。
 
 ## 第三者ライセンス
